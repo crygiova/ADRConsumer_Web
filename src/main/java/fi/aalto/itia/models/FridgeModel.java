@@ -6,6 +6,8 @@ import org.apache.commons.math3.analysis.function.Exp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.gson.annotations.Expose;
+
 import fi.aalto.adrem_consumer.ADRConsumerController;
 
 public class FridgeModel {
@@ -56,14 +58,17 @@ public class FridgeModel {
 	// TODO decide if this is a list of keep track only of the current
 	// temperature
 	/** temperature list */
+	@Expose
 	private ArrayList<Double> temperatureList;
 	/** temperature at a given time t */
 	private Double currentTemperature;
 	/** power list */
+	@Expose
 	private ArrayList<Double> electricPowerList;
 	/** electric power at a given time t */
 	private Double currentElectricPower;
 	/** temperature at a given time t */
+	@Expose
 	private ArrayList<Boolean> onOffList;
 	/** temperature at a given time t */
 	private boolean currentOnOff;
@@ -115,7 +120,7 @@ public class FridgeModel {
 		this.currentTemperature = t0;
 		this.temperatureList.add(t0);
 		this.electricPowerList.add(q0);
-		
+
 		this.currentElectricPower = q0;
 		if (q0 > 0d) {
 			// ON
@@ -201,6 +206,14 @@ public class FridgeModel {
 
 	public ArrayList<Boolean> getOnOffList() {
 		return onOffList;
+	}
+
+	public void switchOnOff(boolean on) {
+		if (on) {
+			switchOn();
+		} else {
+			switchOff();
+		}
 	}
 
 	// Switch on the fridge

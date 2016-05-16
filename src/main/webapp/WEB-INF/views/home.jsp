@@ -11,13 +11,13 @@
 
 	<p>Consumers Simulation Started: ${simStarted}</p>
 
-	<a href="http://localhost:8081/adrem_consumer/startCons">Start ADR Consumers</a>
-	<a href="http://localhost:8081/adrem_consumer/stopCons">Stop ADr Consumers</a>
-	<a href="http://localhost:8081/adrem_consumer">HOME</a>
+	<a href="startCons">Start ADR Consumers</a>
+	<a href="stopCons">Stop ADr Consumers</a>
+	<a href="home">HOME</a>
 	
 	<P>Notes: ${notes}.</P>
 	
 	<P>The time on the server is ${serverTime}.</P>
-	<a href="http://localhost:8081/adrem_consumer/consumers" target="_blank">ConsumersStats</a>
+	<a href="consumers" target="_blank">ConsumersStats</a>
 </body>
 </html>

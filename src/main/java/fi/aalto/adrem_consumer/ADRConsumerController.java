@@ -10,11 +10,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.adr_em_common.SimulationElement;
@@ -38,7 +40,7 @@ public class ADRConsumerController {
 
 	private static Properties properties;
 
-	private static boolean simulationStarted = false;
+	private static Boolean simulationStarted = false;
 	private static Integer numberOfConsumers = 0;
 	/**
 	 * ArrayList which will contain all the Simulation elements
@@ -78,7 +80,7 @@ public class ADRConsumerController {
 	}
 
 	@RequestMapping(value = "/startCons", method = RequestMethod.GET)
-	public String startAgg(Locale locale, Model model) {
+	public String startCons(Locale locale, Model model) {
 
 		if (!simulationStarted) {
 			initConsumers();
@@ -88,9 +90,14 @@ public class ADRConsumerController {
 
 		return "redirect:";
 	}
+	
+	@RequestMapping(value = "/simulationStarted", method = RequestMethod.GET)
+	public String simulationStartedController(Locale locale, Model model) {
+		return simulationStarted.toString();
+	}
 
 	@RequestMapping(value = "/stopCons", method = RequestMethod.GET)
-	public String stopAgg(Locale locale, Model model) {
+	public String stopCons(Locale locale, Model model) {
 		if (simulationStarted) {
 			// TODO gather data before ending the simulation or before setting
 			// the simulation element null
@@ -102,15 +109,31 @@ public class ADRConsumerController {
 		}
 		return "redirect:";
 	}
-	
+
 	@RequestMapping(value = "/consumers", method = RequestMethod.GET)
 	public @ResponseBody String consumers(Locale locale, Model model) {
-		String json = new Gson().toJson(simulationElements.get(0).getFridge().getOnOffList());
+		String json = new Gson().toJson(simulationElements.get(0).getFridge()
+				.getOnOffList());
 		return json;
 	}
 
-	
-	
+	@RequestMapping(value = "/consumers/{id}", method = RequestMethod.GET)
+	public @ResponseBody String consumer(@PathVariable(value = "id") int index) {
+		String json = "";
+		//onli the elements with the expose annotation are returned. @exposed annotation of gson library
+		Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+		if (simulationElements.size() > index)
+			json = jsonGen.toJson(simulationElements.get(index).getFridge());
+		return json;
+	}
+
+	@RequestMapping(value = "/consumers/number", method = RequestMethod.GET)
+	public @ResponseBody String consumer() {
+		String jsonString ="";
+		Gson jsonGson = new Gson();
+		jsonString = jsonGson.toJson(simulationElements.size());
+		return jsonString;
+	}
 	
 	public static void initConsumers() {
 		// generate fridges
@@ -129,6 +152,7 @@ public class ADRConsumerController {
 	}
 
 	public static void startThreads() {
+		threads.clear();
 		for (SimulationElement r : simulationElements) {
 			threads.add(new Thread(r));
 		}
@@ -141,7 +165,7 @@ public class ADRConsumerController {
 		// Start reading frequency
 		FrequencyReader.startFrequencyReader();
 	}
-
+	
 	/**
 	 * Procedure which will end the simulation of all the SimulationElements
 	 */
@@ -154,5 +178,8 @@ public class ADRConsumerController {
 		// STop Frequency Reader
 		FrequencyReader.setKeepReadingToFalse();
 	}
+	
+	
 
 }
+

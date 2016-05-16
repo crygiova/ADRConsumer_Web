@@ -1,12 +1,16 @@
 package fi.aalto.itia.consumer;
 
+import java.util.Random;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import fi.aalto.adrem_consumer.ADRConsumerController;
 import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.adr_em_common.SimulationElement;
+import fi.aalto.itia.adr_em_common.SimulationMessage;
 import fi.aalto.itia.adr_em_common.SimulationMessageFactory;
+import fi.aalto.itia.adr_em_common.UpdateMessageContent;
 import fi.aalto.itia.models.FridgeModel;
 
 public class ADRConsumer extends SimulationElement {
@@ -41,8 +45,7 @@ public class ADRConsumer extends SimulationElement {
 	@Override
 	public void run() {
 		this.startConsumingMq();
-		// TODO init procedure ofthe consumer
-		int i = 0;
+		// TODO init procedure of the consumer
 		// TODO Registration message (it could be that in the content of the
 		// registration message there is already the first update
 		// TODO think how to monitor the frequency (it could be done centrally
@@ -50,14 +53,24 @@ public class ADRConsumer extends SimulationElement {
 
 		// TODO decide also how often the updates are sent, and with which
 		// policy (frequency & every status change?)
-		while (i++ < 1) {
+		// if registration ok then proceed to the loop, start by controlling
+		// with temperature limits, then with instructions
+		// init register
+		// TODO get first UpdateMessageContent, register with random update message
+		this.registerToAggregator(SimulationMessageFactory
+				.generateRandomUpdateMessage(this.inputQueueName));
+		Random rand = new Random();
+		while (this.keepGoing) {
+			int msecUpdate = 5 * 60000;
+
 			try {
-				this.sendMessage(SimulationMessageFactory.getRegisterMessage(
-						this.inputQueueName, ADR_EM_Common.AGG_INPUT_QUEUE));
-				Thread.sleep(1000);
+				Thread.sleep(1 + msecUpdate
+						- (Math.round(msecUpdate * rand.nextFloat())));
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
+			// Random Control
+			this.fridge.switchOnOff(rand.nextBoolean());
 		}
 	}
 
@@ -79,4 +92,20 @@ public class ADRConsumer extends SimulationElement {
 
 	}
 
+	private boolean registerToAggregator(UpdateMessageContent firstUpdate) {
+		// send registration message
+		// TODO change
+		this.sendMessage(SimulationMessageFactory
+				.getRegisterMessage(this.inputQueueName,
+						ADR_EM_Common.AGG_INPUT_QUEUE, firstUpdate));
+		SimulationMessage reg = this.waitForMessage();
+		if (reg.getHeader().compareTo(ADR_EM_Common.ACCEPT_REG_HEADER) == 0) {
+			return true;
+		}
+		// if (reg.getHeader().compareTo(ADR_EM_Common.DENY_REG_HEADER) == 0) {
+		else {
+			this.setKeepGoing(false);
+			return false;
+		}
+	}
 }
