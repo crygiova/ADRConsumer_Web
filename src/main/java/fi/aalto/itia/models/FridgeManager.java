@@ -9,8 +9,10 @@ public class FridgeManager implements Runnable {
 
 	private static final Logger logger = LoggerFactory
 			.getLogger(FridgeManager.class);
-	private static final int INIT_TIME = 3600;// one hour of speed up
+	private static final int INIT_TIME = 2 * 3600;// one hour of speed up
 	private static final int UPDATE_TIME = 900;
+	// during speed up keeps the lists updated or not
+	private static final boolean KEEP_INIT_LISTS_UPDATED = true;
 
 	ArrayList<FridgeModel> fridges = new ArrayList<FridgeModel>();
 	private boolean keepGoing = true;
@@ -38,7 +40,7 @@ public class FridgeManager implements Runnable {
 		for (int i = 0; i < INIT_TIME; i++) {
 			for (FridgeModel fridgeModel : fridges) {
 				if (i == 0) {
-					fridgeModel.setUpdateLists(false);
+					fridgeModel.setUpdateLists(KEEP_INIT_LISTS_UPDATED);
 				}
 				fridgeModel.updateTemperature();
 				this.controlFridgeWithThresholds(fridgeModel);
@@ -60,22 +62,31 @@ public class FridgeManager implements Runnable {
 			for (FridgeModel fridgeModel : fridges) {
 				// TODO Only temperature Update -> No control
 				fridgeModel.updateTemperature();
+				// TODO also limits temp control automatic done by the fridges
+				// theirselves
+				// this.controlFridgeWithThresholds(fridgeModel);
 			}
 		}
 	}
 
-	private void controlFridgeWithThresholds(FridgeModel fridgeModel) {
+	// Basic control + freq control
+	private boolean controlFridgeWithThresholds(FridgeModel fridgeModel) {
 		// CONTROL Of the FRIDGE
 		// T > Tmax and notOn
 		if (fridgeModel.getCurrentTemperature() > (fridgeModel
 				.getTemperatureSP() + fridgeModel.getThermoBandDT())
-				&& !fridgeModel.isCurrentOn())
+				&& !fridgeModel.isCurrentOn()) {
 			fridgeModel.switchOn();
+			return true;
+		}
 		// T < Tmin and On
 		if (fridgeModel.getCurrentTemperature() < (fridgeModel
 				.getTemperatureSP() - fridgeModel.getThermoBandDT())
-				&& fridgeModel.isCurrentOn())
+				&& fridgeModel.isCurrentOn()) {
 			fridgeModel.switchOff();
+			return true;
+		}
+		return false;
 	}
 
 	public void addFridge(FridgeModel fm) {

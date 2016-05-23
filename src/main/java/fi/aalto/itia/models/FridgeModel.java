@@ -1,21 +1,28 @@
 package fi.aalto.itia.models;
 
 import java.util.ArrayList;
+import java.util.Random;
 
 import org.apache.commons.math3.analysis.function.Exp;
+import org.jfree.util.Log;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.gson.annotations.Expose;
 
-import fi.aalto.adrem_consumer.ADRConsumerController;
+import fi.aalto.itia.consumer.ADRConsumer;
 
 public class FridgeModel {
 	private static final Logger logger = LoggerFactory
 			.getLogger(FridgeModel.class);
-	private static final int DATA_ACQUISITION_RATE = 60;// once every minute
+	private static final int DATA_ACQUISITION_RATE = 3;// 60 once every minute
+	private final int DELAY_BEFORE_CHANGING_STATUS;
 
-	private int counter = 0;
+	private int counterDataAquisitionRate = 0;
+	private int counterDelayBeforeChangingStatus = 0;
+	private boolean possibleToSwitchOff = true;
+	private boolean possibleToSwitchOn = true;
+	private boolean useOnlyTimeDelay = true;
 	// if false disable the users to keep track of the evolutin of dynamics
 	private boolean updateLists = true;
 
@@ -73,6 +80,11 @@ public class FridgeModel {
 	/** temperature at a given time t */
 	private boolean currentOnOff;
 
+	private ADRConsumer consumer;
+
+	static {
+	}
+
 	/**
 	 * @param coeffOfPerf
 	 * @param ptcl
@@ -105,7 +117,13 @@ public class FridgeModel {
 
 		// FridgeID
 		ID = IDCounter++;
-
+		// 180 sec + rand 120max, = max 300 sec
+		Random r = new Random();
+		//TODO CHANGE
+//		DELAY_BEFORE_CHANGING_STATUS = 180 + Math.round(120 * r.nextFloat());
+		DELAY_BEFORE_CHANGING_STATUS = 30 + Math.round(30 * r.nextFloat());
+		
+		
 		// TODO There is a problem here exp(-dt*tau) where dt is the disc time
 		// step!!!!
 		// HOw TODO this?? 1 if 1 sec time step!
@@ -208,38 +226,80 @@ public class FridgeModel {
 		return onOffList;
 	}
 
-	public void switchOnOff(boolean on) {
+	public boolean switchOnOff(boolean on) {
 		if (on) {
-			switchOn();
+			return switchOn();
 		} else {
-			switchOff();
+			return switchOff();
 		}
 	}
 
 	// Switch on the fridge
-	public void switchOn() {
-		this.currentOnOff = true;
-		this.currentElectricPower = ptcl;
+	public boolean switchOn() {
+		if (possibleToSwitchOn) {
+			this.currentOnOff = true;
+			this.currentElectricPower = ptcl;
+			this.setPossibleToSwitchOff(false);
+			this.setPossibleToSwitchOn(false);
+			counterDelayBeforeChangingStatus = 0;
+			return true;
+		}
+		return false;
 	}
 
 	// Switch on the fridge
-	public void switchOff() {
-		this.currentOnOff = false;
-		this.currentElectricPower = 0d;
+	public boolean switchOff() {
+		if (possibleToSwitchOff) {
+			this.currentOnOff = false;
+			this.currentElectricPower = 0d;
+			this.setPossibleToSwitchOff(false);
+			this.setPossibleToSwitchOn(false);
+			counterDelayBeforeChangingStatus = 0;
+			return true;
+		}
+		return false;
+
 	}
 
 	// Temperature Update Function
 	// TODO Olli suggests to add some randomness
+	// TODO a certain number of updates is needed beforechanging status again
 	public void updateTemperature() {
 		int bufferOnOff = 0;
 		if (currentOnOff)
 			bufferOnOff = 1;
 		this.currentTemperature = this.E * this.currentTemperature + this.A
 				* (this.tAmb - this.B * bufferOnOff);
+
+		if (!possibleToSwitchOff || !possibleToSwitchOn) {
+			// if the time delay has passed or
+			// changes
+			if (++counterDelayBeforeChangingStatus >= DELAY_BEFORE_CHANGING_STATUS) {
+				// if current on -> I can switch off after delay
+				// if current off -> I can switch on after delay
+				if (this.currentOnOff)
+					this.setPossibleToSwitchOff(true);
+				else
+					this.setPossibleToSwitchOn(true);
+				this.useOnlyTimeDelay = false;
+			}
+			// if the temperature is out of the
+			// temperature limits! Allow status
+			if (this.currentTemperature > (this.getTemperatureSP() + this
+					.getThermoBandDT()) && !this.useOnlyTimeDelay) {
+				this.useOnlyTimeDelay = true;
+				this.setPossibleToSwitchOn(true);
+			}
+			if (this.currentTemperature < (this.getTemperatureSP() - this
+					.getThermoBandDT()) && !this.useOnlyTimeDelay) {
+				this.useOnlyTimeDelay = true;
+				this.setPossibleToSwitchOff(true);
+			}
+		}
 		// only if updatelists is true
 		if (updateLists) {
-			if (++counter > DATA_ACQUISITION_RATE) {
-				counter = 0;
+			if (++counterDataAquisitionRate > DATA_ACQUISITION_RATE) {
+				counterDataAquisitionRate = 0;
 				this.temperatureList.add(this.currentTemperature);
 				this.electricPowerList.add(this.currentElectricPower);
 				this.onOffList.add(this.currentOnOff);
@@ -255,6 +315,18 @@ public class FridgeModel {
 		this.updateLists = updateLists;
 	}
 
+	public int getDELAY_BEFORE_CHANGING_STATUS() {
+		return DELAY_BEFORE_CHANGING_STATUS;
+	}
+
+	public ADRConsumer getConsumer() {
+		return consumer;
+	}
+
+	public void setConsumer(ADRConsumer consumer) {
+		this.consumer = consumer;
+	}
+
 	@Override
 	public String toString() {
 		return "FridgeModel [coeffOfPerf=" + coeffOfPerf + ", ptcl=" + ptcl
@@ -266,5 +338,29 @@ public class FridgeModel {
 				+ ", currentTemperature=" + currentTemperature
 				+ ", currentElectricPower=" + currentElectricPower
 				+ ", currentOnOff=" + currentOnOff + "]";
+	}
+
+	public boolean isPossibleToSwitchOff() {
+		return possibleToSwitchOff;
+	}
+
+	public void setPossibleToSwitchOff(boolean possibleToSwitchOff) {
+		this.possibleToSwitchOff = possibleToSwitchOff;
+	}
+
+	public boolean isPossibleToSwitchOn() {
+		return possibleToSwitchOn;
+	}
+
+	public void setPossibleToSwitchOn(boolean possibleToSwitchOn) {
+		this.possibleToSwitchOn = possibleToSwitchOn;
+	}
+
+	public boolean isUseOnlyTimeDelay() {
+		return useOnlyTimeDelay;
+	}
+
+	public void setUseOnlyTimeDelay(boolean useOnlyTimeDelay) {
+		this.useOnlyTimeDelay = useOnlyTimeDelay;
 	}
 }

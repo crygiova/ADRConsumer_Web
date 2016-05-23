@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import fi.aalto.adrem_consumer.ADRConsumerController;
+import fi.aalto.adrem_consumer.ConsumerController;
 
 public class FrequencyReader implements Runnable {
 
@@ -87,6 +87,7 @@ public class FrequencyReader implements Runnable {
 
 	public static void setKeepReadingToFalse() {
 		FrequencyReader.keepReading = false;
+		singleton = null;
 	}
 
 }

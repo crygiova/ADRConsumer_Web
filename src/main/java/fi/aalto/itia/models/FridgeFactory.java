@@ -15,6 +15,7 @@ public class FridgeFactory {
 		Random r = new Random();
 
 		coeffOfPerf = 3d;
+		//XXX TODO needs to be randomized!!
 		ptcl = 70d;
 		mcMin = 7.9d;
 		mcMax = 32;
