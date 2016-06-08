@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import fi.aalto.adrem_consumer.ConsumerController;
 
 public class FrequencyReader implements Runnable {
 
