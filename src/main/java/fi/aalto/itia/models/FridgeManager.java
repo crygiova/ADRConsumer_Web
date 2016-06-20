@@ -9,10 +9,11 @@ public class FridgeManager implements Runnable {
 
     @SuppressWarnings("unused")
     private static final Logger logger = LoggerFactory.getLogger(FridgeManager.class);
-    private static final int INIT_TIME = 3 * 3600;// one hour of speed up
+    private static final int INIT_TIME = 24 * 3600;// one hour of speed up
     private static final int UPDATE_TIME = 900;
     // during speed up keeps the lists updated or not
-    private static final boolean KEEP_INIT_LISTS_UPDATED = true;
+    private static final boolean KEEP_INIT_LISTS_UPDATED = false;
+    private static final boolean KEEP_SIMULATION_LISTS_UPDATED = false;
 
     ArrayList<FridgeModel> fridges = new ArrayList<FridgeModel>();
     private boolean keepGoing = true;
@@ -45,7 +46,7 @@ public class FridgeManager implements Runnable {
 		fridgeModel.updateTemperature();
 		this.controlFridgeWithThresholds(fridgeModel);
 		if (i == INIT_TIME - 1) {
-		    fridgeModel.setUpdateLists(true);
+		    fridgeModel.setUpdateLists(KEEP_SIMULATION_LISTS_UPDATED);
 		}
 	    }
 	}

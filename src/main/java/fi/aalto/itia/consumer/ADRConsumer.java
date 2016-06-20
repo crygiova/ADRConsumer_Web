@@ -31,6 +31,9 @@ public class ADRConsumer extends SimulationElement {
     private static final long serialVersionUID = 4328592954437775437L;
     private static final String PREFIX_INPUT_QUEUE = "adrc_";
     private static final long MAX_TIME_FREQ_UPDATE = 3 * ADR_EM_Common.ONE_MIN;
+    private static final int RESTORE_DELAY_CONST = 0;
+    private static final int RESTORE_DELAY_VAR = 30;
+
     private FridgeModel fridge;
     private final int ID;
     private boolean lastInstructionUpdated;
@@ -56,7 +59,8 @@ public class ADRConsumer extends SimulationElement {
 	this.lastInstruction = new InstructionsMessageContent(null);
 	this.lastInstructionUpdated = false;
 	// random generated delay to restore from DR action
-	this.restoreDelay = (int) (10 + Math.round(20 * betaD.sample()));
+	this.restoreDelay = (int) (RESTORE_DELAY_CONST + Math.round(RESTORE_DELAY_VAR
+		* betaD.sample()));
 	// init aging
 	this.aging = new AgingADRConsumer(this.inputQueueName, this.ID);
     }
@@ -105,9 +109,10 @@ public class ADRConsumer extends SimulationElement {
 		lastInstructionUpdated = false;
 	    }
 	    // XXX this is the control
-	    if (!this.controlFridgeWithThresholds())
-		applyFreqControl(freqToReactUnder, freqToReactAbove);
-	    else {
+	    if (!this.controlFridgeWithThresholds()) {
+		// applyFreqControl(freqToReactUnder, freqToReactAbove);
+		applyFreqControlV2(freqToReactUnder, freqToReactAbove);
+	    } else {
 		// NB this should be changed
 		this.updateAggregator();
 	    }
@@ -125,9 +130,9 @@ public class ADRConsumer extends SimulationElement {
 
     private void applyFreqControl(Double freqToReactUnder, Double freqToReactAbove) {
 	// TODO missing the restore back
-	if (freqToReactUnder != 0d) {
+	if (freqToReactUnder != 0d || this.isRestoreToOn()) {
 	    // if the frequency is lower than my react freq
-	    if (FrequencyReader.getCurrentFreqValue() <= freqToReactUnder) {
+	    if (FrequencyReader.getCurrentFreqValue() <= freqToReactUnder && !this.isRestoreToOn()) {
 		if (this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOff()) {
 		    this.fridge.switchOff();
 		    this.setRestoreToOn(true);
@@ -147,11 +152,11 @@ public class ADRConsumer extends SimulationElement {
 		    this.initCounterRestore();
 		}
 	    }
-
 	}
-	if (freqToReactAbove != 0d) {
+	if (freqToReactAbove != 0d || this.isRestoreToOff()) {
 	    if (FrequencyReader.getCurrentFreqValue() >= freqToReactAbove) {
-		if (!this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOn()) {
+		if (!this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOn()
+			&& !this.isRestoreToOff()) {
 		    this.fridge.switchOn();
 		    this.setRestoreToOff(true);
 		    // counting how many times it is reacting to up frequency
@@ -171,7 +176,66 @@ public class ADRConsumer extends SimulationElement {
 		    this.initCounterRestore();
 		}
 	    }
+	}
+    }
 
+    private void applyFreqControlV2(Double freqToReactUnder, Double freqToReactAbove) {
+
+	if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder
+		&& !this.isRestoreToOn()) {
+	    if (this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOff()) {
+		this.fridge.switchOff();
+		this.setRestoreToOn(true);
+		// counting how many times it is reacting to Down frequency
+		this.aging.addReactDw();
+	    } else {
+		// if cannot react
+		this.updateAggregator();
+	    }
+	    this.initCounterRestore();
+	} else if (this.isRestoreToOn()) {
+	    if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder) {
+		this.initCounterRestore();
+	    } else {
+		this.addCounterRestore();
+	    }
+	    if (counterRestore > restoreDelay || freqToReactUnder == 0d) { // restoreOn
+		logger.info(this.inputQueueName + " *2*2*2*2*2*2**2*2*2*2*2*2*2*2*22*2* "
+			+ this.restoreDelay + " - counter " + counterRestore);
+		this.updateAggregator();
+		this.setRestoreToOn(false);
+		this.fridge.switchOn();
+		this.initCounterRestore();
+	    }
+	}
+
+	// 2//
+	if (freqToReactAbove != 0d && FrequencyReader.getCurrentFreqValue() >= freqToReactAbove
+		&& !this.isRestoreToOff()) {
+	    if (!this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOn()
+		    && !this.isRestoreToOff()) {
+		this.fridge.switchOn();
+		this.setRestoreToOff(true);
+		// counting how many times it is reacting to up frequency
+		this.aging.addReactUp();
+	    } else {
+		this.updateAggregator();
+	    }
+	    this.initCounterRestore();
+	} else if (this.isRestoreToOff()) {
+	    if (freqToReactAbove != 0d && FrequencyReader.getCurrentFreqValue() >= freqToReactAbove) {
+		this.initCounterRestore();
+	    } else {
+		this.addCounterRestore();
+	    }
+	    if (counterRestore > restoreDelay || freqToReactAbove == 0d) {// restoreOff
+		logger.info(this.inputQueueName + " +2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2++2+2+"
+			+ this.restoreDelay + " - counter " + counterRestore);
+		this.updateAggregator();
+		this.setRestoreToOff(false);
+		this.fridge.switchOff();
+		this.initCounterRestore();
+	    }
 	}
     }
 
