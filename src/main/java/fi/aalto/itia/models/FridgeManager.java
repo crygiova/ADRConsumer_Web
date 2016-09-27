@@ -9,7 +9,7 @@ public class FridgeManager implements Runnable {
 
     @SuppressWarnings("unused")
     private static final Logger logger = LoggerFactory.getLogger(FridgeManager.class);
-    private static final int INIT_TIME = 24 * 3600;// one hour of speed up
+    private static final int INIT_TIME = 24 * 3600;//24 * 3600;// one hour of speed up
     private static final int UPDATE_TIME = 900;
     // during speed up keeps the lists updated or not
     private static final boolean KEEP_INIT_LISTS_UPDATED = false;

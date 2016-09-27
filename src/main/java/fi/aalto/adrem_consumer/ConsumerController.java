@@ -1,11 +1,20 @@
 package fi.aalto.adrem_consumer;
 
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Properties;
 
+import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -18,6 +27,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.adr_em_common.SimulationElement;
 import fi.aalto.itia.consumer.ADRConsumer;
 import fi.aalto.itia.consumer.FrequencyReader;
@@ -34,6 +44,7 @@ public class ConsumerController {
 
     private static final String FILE_NAME_PROPERTIES = "config.properties";
     private static final String NUMBER_OF_CONSUMERS = "N_CONSUMERS";
+    private static final String OUT_JSON_FILE = "aggStatsData.json";
 
     private static final Logger logger = LoggerFactory.getLogger(ConsumerController.class);
 
@@ -143,6 +154,47 @@ public class ConsumerController {
 	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	if (statsAggregated != null)
 	    json = jsonGen.toJson(statsAggregated);
+	return json;
+    }
+
+    @RequestMapping(value = "/getJsonPost", method = RequestMethod.GET)
+    public @ResponseBody String getJsonPost() {
+	String json = "";
+
+	String fileName = "14-07-2016_14-45-51_aggStatsData.json";
+	BufferedReader br;
+	try {
+	     br = new BufferedReader(new FileReader(ADR_EM_Common.OUT_FILE_DIR+fileName));
+	} catch (FileNotFoundException e) {
+	    // TODO Auto-generated catch block
+	    e.printStackTrace();
+	}
+	return json;
+    }
+
+    @RequestMapping(value = "/saveAggStats", method = RequestMethod.GET)
+    public @ResponseBody String saveAggStats() {
+	String json = "";
+	// only the elements with the expose annotation are returned. @exposed
+	// annotation of gson library
+	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+	if (statsAggregated != null)
+	    json = jsonGen.toJson(statsAggregated);
+	// save the content in output
+	try {
+	    DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy_HH-mm-ss_");
+	    // get current date time with Calendar()
+	    Calendar cal = Calendar.getInstance();
+	    FileWriter file = new FileWriter(ADR_EM_Common.OUT_FILE_DIR
+		    + dateFormat.format(cal.getTime()) + OUT_JSON_FILE);
+	    file.write(json);
+	    file.flush();
+	    file.close();
+
+	} catch (IOException e) {
+	    e.printStackTrace();
+	}
+
 	return json;
     }
 
