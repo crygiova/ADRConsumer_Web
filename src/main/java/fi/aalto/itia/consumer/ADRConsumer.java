@@ -1,68 +1,53 @@
 package fi.aalto.itia.consumer;
 
-import java.io.IOException;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.rabbitmq.client.AMQP;
-import com.rabbitmq.client.Consumer;
-import com.rabbitmq.client.DefaultConsumer;
-import com.rabbitmq.client.Envelope;
-
 import fi.aalto.itia.adr_em_common.ADR_EM_Common;
-import fi.aalto.itia.adr_em_common.AgingADRConsumer;
-import fi.aalto.itia.adr_em_common.InstructionsMessageContent;
 import fi.aalto.itia.adr_em_common.SimulationElement;
-import fi.aalto.itia.adr_em_common.SimulationMessage;
-import fi.aalto.itia.adr_em_common.SimulationMessageFactory;
-import fi.aalto.itia.adr_em_common.UpdateMessageContent;
 import fi.aalto.itia.models.FridgeModel;
-import fi.aalto.itia.util.Utility;
 
 import org.apache.commons.math3.distribution.BetaDistribution;
-import org.apache.commons.math3.distribution.LevyDistribution;
 
 public class ADRConsumer extends SimulationElement {
     /**
 	 * 
 	 */
-    private static final Logger logger = LoggerFactory.getLogger(ADRConsumer.class);
+    protected static final Logger logger = LoggerFactory.getLogger(ADRConsumer.class);
     private static final long serialVersionUID = 4328592954437775437L;
     private static final String PREFIX_INPUT_QUEUE = "adrc_";
-    private static final long MAX_TIME_FREQ_UPDATE = 3 * ADR_EM_Common.ONE_MIN;
+    protected static final long MAX_TIME_FREQ_UPDATE = 3 * ADR_EM_Common.ONE_MIN;
     private static final int RESTORE_DELAY_CONST = 0;
-    private static final int RESTORE_DELAY_VAR = 30;
+    private static final int RESTORE_DELAY_VAR = 15;
 
     private FridgeModel fridge;
     private final int ID;
-    private boolean lastInstructionUpdated;
 
-    private AgingADRConsumer aging;
-
-    private InstructionsMessageContent lastInstruction;
-    private boolean restoreToOn = false;
-    private int counterRestore = 0;
-    private boolean restoreToOff = false;
     // from:
     // http://commons.apache.org/proper/commons-math/userguide/distribution.html
     private BetaDistribution betaD = new BetaDistribution(3, 7);
     // XXX important since is the restore delay
-    private int restoreDelay;
-    // Time of the last update sent to the aggregator
-    private long lastUpdateSent;
+    protected int restoreDelay;
+    // XXX important since is the react delay
+    protected int reactDelay;
+
+    // FridgeControl
+    private boolean restoreToOff = false;
+    private boolean restoreToOn = false;
+    private int counterRestore = 0;
+    private int counterReact = 0;
 
     public ADRConsumer(int ID, FridgeModel fridge) {
 	super(PREFIX_INPUT_QUEUE + ID);
 	this.ID = ID;
 	this.fridge = fridge;
-	this.lastInstruction = new InstructionsMessageContent(null);
-	this.lastInstructionUpdated = false;
+
 	// random generated delay to restore from DR action
 	this.restoreDelay = (int) (RESTORE_DELAY_CONST + Math.round(RESTORE_DELAY_VAR
 		* betaD.sample()));
-	// init aging
-	this.aging = new AgingADRConsumer(this.inputQueueName, this.ID);
+	this.reactDelay = (int) (RESTORE_DELAY_CONST + Math.round(RESTORE_DELAY_VAR
+		* betaD.sample()));
+
     }
 
     public FridgeModel getFridge() {
@@ -91,168 +76,20 @@ public class ADRConsumer extends SimulationElement {
     // TODO get first UpdateMessageContent, register with random update
     // message
     // fridgeON
-    @Override
-    public void run() {
-	this.startConsumingMq();
-	// Random msg based on fridge on or off
-	this.registerToAggregator(this.getCurrentUpdateMessageContent());
-
-	Double freqToReactUnder = 0d;
-
-	Double freqToReactAbove = 0d;
-
-	// Loop keep going
-	while (this.keepGoing) {
-	    if (lastInstructionUpdated == true) {
-		freqToReactUnder = lastInstruction.getUnderNominalFrequency();
-		freqToReactAbove = lastInstruction.getAboveNominalFrequency();
-		lastInstructionUpdated = false;
-	    }
-	    // XXX this is the control
-	    if (!this.controlFridgeWithThresholds()) {
-		// applyFreqControl(freqToReactUnder, freqToReactAbove);
-		applyFreqControlV2(freqToReactUnder, freqToReactAbove);
-	    } else {
-		// NB this should be changed
-		this.updateAggregator();
-	    }
-	    // check if we need to send a new update with last update sent
-	    if (lastUpdateSent - System.currentTimeMillis() > MAX_TIME_FREQ_UPDATE) {
-		this.updateAggregator();
-	    }
-	    try {
-		Thread.sleep(Math.round((2 + 3 * Utility.getRandom()) * ADR_EM_Common.ONE_SECOND));
-	    } catch (InterruptedException e) {
-		e.printStackTrace();
-	    }
-	}
-    }
-
-    private void applyFreqControl(Double freqToReactUnder, Double freqToReactAbove) {
-	// TODO missing the restore back
-	if (freqToReactUnder != 0d || this.isRestoreToOn()) {
-	    // if the frequency is lower than my react freq
-	    if (FrequencyReader.getCurrentFreqValue() <= freqToReactUnder && !this.isRestoreToOn()) {
-		if (this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOff()) {
-		    this.fridge.switchOff();
-		    this.setRestoreToOn(true);
-		    // counting how many times it is reacting to Down frequency
-		    this.aging.addReactDw();
-		}
-		this.initCounterRestore();
-	    } else if (this.isRestoreToOn()) {
-		// TODO TODO this part is to test RESTORE
-		this.addCounterRestore();
-		if (counterRestore > restoreDelay) {
-		    logger.info(this.inputQueueName + " ****************** " + this.restoreDelay
-			    + " - counter " + counterRestore);
-		    this.updateAggregator();
-		    this.setRestoreToOn(false);
-		    this.fridge.switchOn();
-		    this.initCounterRestore();
-		}
-	    }
-	}
-	if (freqToReactAbove != 0d || this.isRestoreToOff()) {
-	    if (FrequencyReader.getCurrentFreqValue() >= freqToReactAbove) {
-		if (!this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOn()
-			&& !this.isRestoreToOff()) {
-		    this.fridge.switchOn();
-		    this.setRestoreToOff(true);
-		    // counting how many times it is reacting to up frequency
-		    this.aging.addReactUp();
-		}
-		this.initCounterRestore();
-	    } else if (this.isRestoreToOff()) {
-		// TODO TODO this part is to test
-
-		this.addCounterRestore();
-		if (counterRestore > restoreDelay) {
-		    logger.info(this.inputQueueName + " ++++++++++++++++++++++ "
-			    + this.restoreDelay + " - counter " + counterRestore);
-		    this.updateAggregator();
-		    this.setRestoreToOff(false);
-		    this.fridge.switchOff();
-		    this.initCounterRestore();
-		}
-	    }
-	}
-    }
-
-    private void applyFreqControlV2(Double freqToReactUnder, Double freqToReactAbove) {
-
-	if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder
-		&& !this.isRestoreToOn()) {
-	    if (this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOff()) {
-		this.fridge.switchOff();
-		this.setRestoreToOn(true);
-		// counting how many times it is reacting to Down frequency
-		this.aging.addReactDw();
-	    } else {
-		// if cannot react
-		this.updateAggregator();
-	    }
-	    this.initCounterRestore();
-	} else if (this.isRestoreToOn()) {
-	    if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder) {
-		this.initCounterRestore();
-	    } else {
-		this.addCounterRestore();
-	    }
-	    if (counterRestore > restoreDelay || freqToReactUnder == 0d) { // restoreOn
-		logger.info(this.inputQueueName + " *2*2*2*2*2*2**2*2*2*2*2*2*2*2*22*2* "
-			+ this.restoreDelay + " - counter " + counterRestore);
-		this.updateAggregator();
-		this.setRestoreToOn(false);
-		this.fridge.switchOn();
-		this.initCounterRestore();
-	    }
-	}
-
-	// 2//
-	if (freqToReactAbove != 0d && FrequencyReader.getCurrentFreqValue() >= freqToReactAbove
-		&& !this.isRestoreToOff()) {
-	    if (!this.fridge.isCurrentOn() && this.fridge.isPossibleToSwitchOn()
-		    && !this.isRestoreToOff()) {
-		this.fridge.switchOn();
-		this.setRestoreToOff(true);
-		// counting how many times it is reacting to up frequency
-		this.aging.addReactUp();
-	    } else {
-		this.updateAggregator();
-	    }
-	    this.initCounterRestore();
-	} else if (this.isRestoreToOff()) {
-	    if (freqToReactAbove != 0d && FrequencyReader.getCurrentFreqValue() >= freqToReactAbove) {
-		this.initCounterRestore();
-	    } else {
-		this.addCounterRestore();
-	    }
-	    if (counterRestore > restoreDelay || freqToReactAbove == 0d) {// restoreOff
-		logger.info(this.inputQueueName + " +2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2++2+2+"
-			+ this.restoreDelay + " - counter " + counterRestore);
-		this.updateAggregator();
-		this.setRestoreToOff(false);
-		this.fridge.switchOff();
-		this.initCounterRestore();
-	    }
-	}
-    }
-
-    private boolean controlFridgeWithThresholds() {
-	// CONTROL Of the FRIDGE
+    protected boolean controlFridgeWithThresholds() {
+	// CONTROL Of the FRIDGE using the conditions of the fridges
 	// T > Tmax and notOn
-	if (this.fridge.getCurrentTemperature() > (this.fridge.getTemperatureSP() + this.fridge
-		.getThermoBandDT()) && !this.fridge.isCurrentOn()) {
-	    this.fridge.switchOn();
+	if (this.getFridge().getCurrentTemperature() > (this.getFridge().getTemperatureSP() + this
+		.getFridge().getThermoBandDT()) && !this.getFridge().isCurrentOn()) {
+	    this.getFridge().switchOn();
 	    this.setRestoreToOn(false);
 	    this.initCounterRestore();
 	    return true;
 	}
 	// T < Tmin and On
-	if (this.fridge.getCurrentTemperature() < (this.fridge.getTemperatureSP() - this.fridge
-		.getThermoBandDT()) && this.fridge.isCurrentOn()) {
-	    this.fridge.switchOff();
+	if (this.getFridge().getCurrentTemperature() < (this.getFridge().getTemperatureSP() - this
+		.getFridge().getThermoBandDT()) && this.getFridge().isCurrentOn()) {
+	    this.getFridge().switchOff();
 	    this.setRestoreToOff(false);
 	    this.initCounterRestore();
 	    return true;
@@ -260,89 +97,32 @@ public class ADRConsumer extends SimulationElement {
 	return false;
     }
 
-    // generates update message content object with last updates
-    private UpdateMessageContent getCurrentUpdateMessageContent() {
-	if (this.fridge.isCurrentOn()) {
-	    return SimulationMessageFactory.getUpdateMessageContent(
-		    this.fridge.getCurrentElectricPower(), this.fridge.getCurrentElectricPower(),
-		    this.fridge.getSecondsToTempMaxLimit(), this.fridge.getSecondsToTempMinLimit(),
-		    0d, 0d, 0d, this.inputQueueName, this.aging);
-	} else {
-	    return SimulationMessageFactory.getUpdateMessageContent(
-		    this.fridge.getCurrentElectricPower(), this.fridge.getCurrentElectricPower(),
-		    0d, 0d, this.fridge.getPtcl(), this.fridge.getSecondsToTempMinLimit(),
-		    this.fridge.getSecondsToTempMaxLimit(), this.inputQueueName, this.aging);
-	}
+    public int getCounterRestoreMax() {
+	return restoreDelay;
     }
 
-    private void updateAggregator() {
-	// TODO Auto-generated method stub
-	UpdateMessageContent umc = this.getCurrentUpdateMessageContent();
-	lastUpdateSent = System.currentTimeMillis();
-	this.sendMessage(SimulationMessageFactory.getUpdateMessage(this.inputQueueName,
-		ADR_EM_Common.AGG_INPUT_QUEUE, umc));
+    public void setCounterRestoreMax(int counterRestoreMax) {
+	this.restoreDelay = counterRestoreMax;
     }
 
-    private boolean registerToAggregator(UpdateMessageContent firstUpdate) {
-	// send registration message
-	// TODO change
-	this.sendMessage(SimulationMessageFactory.getRegisterMessage(this.inputQueueName,
-		ADR_EM_Common.AGG_INPUT_QUEUE, firstUpdate));
-	SimulationMessage reg = this.waitForMessage();
-	lastUpdateSent = System.currentTimeMillis();
-	if (reg.getHeader().compareTo(ADR_EM_Common.ACCEPT_REG_HEADER) == 0) {
-	    return true;
-	}
-	// if (reg.getHeader().compareTo(ADR_EM_Common.DENY_REG_HEADER) == 0) {
-	else {
-	    this.setKeepGoing(false);
-	    return false;
-	}
+    public boolean isRestoreToOn() {
+	return restoreToOn;
     }
 
-    public void startConsumingMq() {
-	Consumer consumer = new DefaultConsumer(dRChannel) {
-	    @Override
-	    public void handleDelivery(String consumerTag, Envelope envelope,
-		    AMQP.BasicProperties properties, byte[] body) throws IOException {
-		SimulationMessage sm = null;
-		try {
-		    sm = (SimulationMessage) SimulationMessage.deserialize(body);
-		} catch (ClassNotFoundException e) {
-		    e.printStackTrace();
-		}
-		if (sm != null) {
-		    routeInputMessage(sm);
-		}
-	    }
-	};
-	try {
-	    dRChannel.basicConsume(inputQueueName, true, consumer);
-	} catch (IOException e) {
-	    e.printStackTrace();
-	}
+    public void setRestoreToOn(boolean restoreToOn) {
+	this.restoreToOn = restoreToOn;
     }
 
-    // This function routes the input messages based on their headers
-    public void routeInputMessage(SimulationMessage sm) {
-	switch (sm.getHeader()) {
-	case ADR_EM_Common.INSTRUCTIONS_HEADER:
-	    if (sm.getContent() instanceof InstructionsMessageContent) {
-		this.lastInstruction = (InstructionsMessageContent) sm.getContent();
-		this.lastInstructionUpdated = true;
-	    }
-	    break;
-	// case ADR_EM_Common.ACCEPT_REG_HEADER:
-	// // add the consumer to the set
-	// addMessage(sm);
-	// break;
-	// case ADR_EM_Common.DENY_REG_HEADER:
-	// addMessage(sm);
-	// break;
-	default:
-	    addMessage(sm);
-	    break;
-	}
+    public boolean isRestoreToOff() {
+	return restoreToOff;
+    }
+
+    public void setRestoreToOff(boolean restoreToOff) {
+	this.restoreToOff = restoreToOff;
+    }
+
+    public int getCounterRestore() {
+	return counterRestore;
     }
 
     public void addCounterRestore() {
@@ -351,6 +131,27 @@ public class ADRConsumer extends SimulationElement {
 
     public void initCounterRestore() {
 	counterRestore = 0;
+    }
+
+    //Reaction delay methods
+    public int getReactDelay() {
+	return reactDelay;
+    }
+
+    public void setReactDelay(int reactDelay) {
+	this.reactDelay = reactDelay;
+    }
+
+    public int getCounterReact() {
+	return counterReact;
+    }
+
+    public void addCounterReact() {
+	counterReact++;
+    }
+
+    public void initCounterReact() {
+	counterReact = 0;
     }
 
     @Override
@@ -371,61 +172,9 @@ public class ADRConsumer extends SimulationElement {
 
     }
 
-    public boolean isRestoreToOn() {
-	return restoreToOn;
+    @Override
+    public void run() {
+
     }
 
-    public void setRestoreToOn(boolean restoreToOn) {
-	this.restoreToOn = restoreToOn;
-    }
-
-    public boolean isRestoreToOff() {
-	return restoreToOff;
-    }
-
-    public void setRestoreToOff(boolean restoreToOff) {
-	this.restoreToOff = restoreToOff;
-    }
-
-    public int getCounterRestoreMax() {
-	return restoreDelay;
-    }
-
-    public void setCounterRestoreMax(int counterRestoreMax) {
-	this.restoreDelay = counterRestoreMax;
-    }
-
-    public AgingADRConsumer getAging() {
-	return aging;
-    }
-
-    public void setAging(AgingADRConsumer aging) {
-	this.aging = aging;
-    }
-
-    /*
-     * (non-Javadoc)
-     * 
-     * @see java.lang.Runnable#run()
-     */
-    /*
-     * @Override public void run() { this.startConsumingMq(); //FridgeON
-     * this.fridge.switchOn();
-     * this.registerToAggregator(SimulationMessageFactory
-     * .getSemiRandomUpdateMessage(this.inputQueueName)); // TODO wait for the
-     * message SimulationMessage sm = this.waitForMessage(); Double freqToReact
-     * = ((InstructionsMessageContent) sm.getContent())
-     * .getUnderNominalFrequency(); // Loop keep going while (this.keepGoing) {
-     * if (FrequencyReader.getCurrentFreqValue() <= freqToReact) {
-     * this.fridge.switchOff(); } try { Thread.sleep(3 * 1000); } catch
-     * (InterruptedException e) { // TODO Auto-generated catch block
-     * e.printStackTrace(); } } // Random rand = new Random(); // while
-     * (this.keepGoing) { // int msecUpdate = 5 * 60000; // // try { //
-     * Thread.sleep(1 + msecUpdate // - (Math.round(msecUpdate *
-     * rand.nextFloat()))); // } catch (InterruptedException e) { //
-     * e.printStackTrace(); // } // // Random Control //
-     * this.fridge.switchOnOff(rand.nextBoolean()); // } }
-     */
-    // TODO This function should generate and update message for the aggregator
-    // and send it
 }

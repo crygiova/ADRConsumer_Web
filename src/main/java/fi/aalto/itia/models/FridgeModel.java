@@ -119,7 +119,7 @@ public class FridgeModel {
 	Random r = new Random();
 	// TODO CHANGE
 	// DELAY_BEFORE_CHANGING_STATUS = 180 + Math.round(120 * r.nextFloat());
-	DELAY_BEFORE_CHANGING_STATUS = 60;// 30 + Math.round(30 *
+	DELAY_BEFORE_CHANGING_STATUS = 120;// 30 + Math.round(30 *
 					  // r.nextFloat());
 
 	// TODO There is a problem here exp(-dt*tau) where dt is the disc time

@@ -30,7 +30,10 @@ import com.google.gson.GsonBuilder;
 import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.adr_em_common.SimulationElement;
 import fi.aalto.itia.consumer.ADRConsumer;
+import fi.aalto.itia.consumer.AggregatorADRConsumer;
+import fi.aalto.itia.consumer.BackUPADRConsumer;
 import fi.aalto.itia.consumer.FrequencyReader;
+import fi.aalto.itia.consumer.PolicyConsumer;
 import fi.aalto.itia.consumer.StatsAggregator;
 import fi.aalto.itia.models.FridgeFactory;
 import fi.aalto.itia.models.FridgeManager;
@@ -44,6 +47,7 @@ public class ConsumerController {
 
     private static final String FILE_NAME_PROPERTIES = "config.properties";
     private static final String NUMBER_OF_CONSUMERS = "N_CONSUMERS";
+    private static final String USE_POLICIES = "USE_POLICIES";
     private static final String OUT_JSON_FILE = "aggStatsData.json";
 
     private static final Logger logger = LoggerFactory.getLogger(ConsumerController.class);
@@ -52,6 +56,8 @@ public class ConsumerController {
 
     private static Boolean simulationStarted = false;
     private static Integer numberOfConsumers = 0;
+    private static final boolean usePolicies;
+
     /**
      * ArrayList which will contain all the Simulation elements
      */
@@ -70,6 +76,7 @@ public class ConsumerController {
     static {
 	properties = Utility.getProperties(FILE_NAME_PROPERTIES);
 	numberOfConsumers = Integer.parseInt(properties.getProperty(NUMBER_OF_CONSUMERS));
+	usePolicies = Boolean.parseBoolean(properties.getProperty(USE_POLICIES));
     }
 
     /**
@@ -164,7 +171,7 @@ public class ConsumerController {
 	String fileName = "14-07-2016_14-45-51_aggStatsData.json";
 	BufferedReader br;
 	try {
-	     br = new BufferedReader(new FileReader(ADR_EM_Common.OUT_FILE_DIR+fileName));
+	    br = new BufferedReader(new FileReader(ADR_EM_Common.OUT_FILE_DIR + fileName));
 	} catch (FileNotFoundException e) {
 	    // TODO Auto-generated catch block
 	    e.printStackTrace();
@@ -208,18 +215,33 @@ public class ConsumerController {
 
 	// add Consumers
 	simulationElements = new ArrayList<ADRConsumer>();
+
 	// Add as much as clients you want theoretically
-	for (int i = 0; i < numberOfConsumers; i++) {
-	    simulationElements.add(i, new ADRConsumer(i, fridgeManager.getFridges().get(i)));
+	if (usePolicies) {
+	    for (int i = 0; i < numberOfConsumers; i++) {
+		simulationElements.add(i, new PolicyConsumer(i, fridgeManager.getFridges().get(i)));
+	    }
+	} else {
+	    for (int i = 0; i < numberOfConsumers; i++) {
+		simulationElements.add(i, new AggregatorADRConsumer(i, fridgeManager.getFridges()
+			.get(i)));
+	    }
 	}
 	statsAggregated = new StatsAggregator(simulationElements);
     }
 
     public static void startThreads() {
 	threads.clear();
-	for (SimulationElement r : simulationElements) {
-	    threads.add(new Thread(r));
+	if (usePolicies) {
+	    for (SimulationElement r : simulationElements) {
+		threads.add(new Thread(((PolicyConsumer) r)));
+	    }
+	} else {
+	    for (SimulationElement r : simulationElements) {
+		threads.add(new Thread((AggregatorADRConsumer) r));
+	    }
 	}
+
 	for (Thread thread : threads) {
 	    thread.start();
 	}

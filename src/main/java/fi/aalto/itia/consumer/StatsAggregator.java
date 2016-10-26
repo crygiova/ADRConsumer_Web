@@ -77,7 +77,9 @@ public class StatsAggregator extends SimulationElement {
 	baseLevelAgg = new ArrayList<Double>();
 	// init aging for all consumers
 	for (ADRConsumer cons : consumers) {
-	    consumersAging.add(cons.getAging());
+	    if (cons instanceof AggregatorADRConsumer) {
+		consumersAging.add(((AggregatorADRConsumer) cons).getAging());
+	    }
 	}
 	startConsumingMq();
 
