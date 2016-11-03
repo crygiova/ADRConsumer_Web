@@ -2,6 +2,8 @@ package fi.aalto.itia.consumer;
 
 import java.util.Random;
 
+import org.springframework.beans.factory.annotation.Autowired;
+
 import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.models.FridgeModel;
 import fi.aalto.itia.util.Utility;
@@ -49,6 +51,8 @@ public class PolicyConsumer extends ADRConsumer {
 	}
     }
 
+    @Autowired
+    @Deprecated
     private void applyFreqControl(Double freqToReactUnder, Double freqToReactAbove) {
 
 	if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder
@@ -100,6 +104,12 @@ public class PolicyConsumer extends ADRConsumer {
 	}
     }
 
+    /**
+     * Second version of frequency control for independent consumers
+     * 
+     * @param freqToReactUnder
+     * @param freqToReactAbove
+     */
     private void applyFreqControlV2(Double freqToReactUnder, Double freqToReactAbove) {
 
 	if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder
@@ -122,11 +132,12 @@ public class PolicyConsumer extends ADRConsumer {
 		this.addCounterRestore();
 	    }
 	    if (this.getCounterRestore() > restoreDelay || freqToReactUnder == 0d) { // restoreOn
-		logger.info(this.inputQueueName + " *2*2*2*2*2*2**2*2*2*2*2*2*2*2*22*2* "
-			+ this.restoreDelay + " - counter " + this.getCounterRestore());
-		this.setRestoreToOn(false);
-		this.getFridge().switchOn();
-		this.initCounterRestore();
+		if (this.getFridge().switchOn()) {
+		    logger.info(this.inputQueueName + " *2*2*2*2*2*2**2*2*2*2*2*2*2*2*22*2* "
+			    + this.restoreDelay + " - counter " + this.getCounterRestore());
+		    this.setRestoreToOn(false);
+		    this.initCounterRestore();
+		}
 	    }
 	}
 
@@ -152,11 +163,12 @@ public class PolicyConsumer extends ADRConsumer {
 		this.addCounterRestore();
 	    }
 	    if (this.getCounterRestore() > restoreDelay || freqToReactAbove == 0d) {// restoreOff
-		logger.info(this.inputQueueName + " +2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2++2+2+"
-			+ this.restoreDelay + " - counter " + this.getCounterRestore());
-		this.setRestoreToOff(false);
-		this.getFridge().switchOff();
-		this.initCounterRestore();
+		if (this.getFridge().switchOff()) {
+		    logger.info(this.inputQueueName + " +2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2++2+2+"
+			    + this.restoreDelay + " - counter " + this.getCounterRestore());
+		    this.setRestoreToOff(false);
+		    this.initCounterRestore();
+		}
 	    }
 	}
     }

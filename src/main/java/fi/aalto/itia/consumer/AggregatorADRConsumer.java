@@ -25,6 +25,9 @@ public class AggregatorADRConsumer extends ADRConsumer {
      */
     private static final long serialVersionUID = 5769062501178133949L;
 
+    // 3 minutes is the maximum time for updating the status to the aggregator
+    protected static final long MAX_TIME_FREQ_UPDATE = 3 * ADR_EM_Common.ONE_MIN;
+
     protected boolean lastInstructionUpdated;
     // aging parameter of the Consumer
     private AgingADRConsumer aging;
@@ -36,7 +39,6 @@ public class AggregatorADRConsumer extends ADRConsumer {
 
     public AggregatorADRConsumer(int ID, FridgeModel fridge) {
 	super(ID, fridge);
-	// TODO Auto-generated constructor stub
 	this.lastInstruction = new InstructionsMessageContent(null);
 	this.lastInstructionUpdated = false;
 	// init aging
@@ -45,12 +47,12 @@ public class AggregatorADRConsumer extends ADRConsumer {
 
     @Override
     public void run() {
+	// Start consuming the AMQP queue
 	this.startConsumingMq();
 	// Random msg based on fridge on or off
 	this.registerToAggregator(this.getCurrentUpdateMessageContent());
 
 	Double freqToReactUnder = 0d;
-
 	Double freqToReactAbove = 0d;
 
 	// Loop keep going
@@ -62,10 +64,10 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	    }
 	    // XXX this is the control
 	    if (!this.controlFridgeWithThresholds()) {
-		// applyFreqControl(freqToReactUnder, freqToReactAbove);
-		applyFreqControlV2(freqToReactUnder, freqToReactAbove);
+		//applyFreqControlV2(freqToReactUnder, freqToReactAbove);
+		applyFreqControlReactionDelay(freqToReactUnder, freqToReactAbove);
 	    } else {
-		// NB this should be changed
+		// status changes means cannot do ADR
 		this.updateAggregator();
 	    }
 	    // check if we need to send a new update with last update sent
@@ -84,6 +86,7 @@ public class AggregatorADRConsumer extends ADRConsumer {
     /**
      * slower reaction
      * */
+    @Deprecated
     @Autowired
     private void applyFreqControl(Double freqToReactUnder, Double freqToReactAbove) {
 	// TODO missing the restore back
@@ -148,22 +151,28 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	}
     }
 
+    /**
+     * This version is the one utilized for the FCR-N control (2nd conf paper)
+     * 
+     * @param freqToReactUnder
+     * @param freqToReactAbove
+     */
     private void applyFreqControlV2(Double freqToReactUnder, Double freqToReactAbove) {
 
 	if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder
 		&& !this.isRestoreToOn()) {
-//	    this.addCounterReact();
-//	    // if it is time to react
-//	    if (this.getCounterReact() > this.reactDelay) {
-		if (this.getFridge().isCurrentOn() && this.getFridge().isPossibleToSwitchOff()) {
-		    this.getFridge().switchOff();
-		    this.setRestoreToOn(true);
-		    // counting how many times it is reacting to Down frequency
-		    this.aging.addReactDw();
-		} else {
-		    // if cannot react
-		    this.updateAggregator();
-		}
+	    // this.addCounterReact();
+	    // // if it is time to react
+	    // if (this.getCounterReact() > this.reactDelay) {
+	    if (this.getFridge().isCurrentOn() && this.getFridge().isPossibleToSwitchOff()) {
+		this.getFridge().switchOff();
+		this.setRestoreToOn(true);
+		// counting how many times it is reacting to Down frequency
+		this.aging.addReactDw();
+	    } else {
+		// if cannot react
+		this.updateAggregator();
+	    }
 	    // this.initCounterReact();
 	    // }
 	    this.initCounterRestore();
@@ -186,20 +195,20 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	// 2//
 	if (freqToReactAbove != 0d && FrequencyReader.getCurrentFreqValue() >= freqToReactAbove
 		&& !this.isRestoreToOff()) {
-//	    this.addCounterReact();
-//	    // if it is time to react
-//	    if (this.getCounterReact() > this.reactDelay) {
-		if (!this.getFridge().isCurrentOn() && this.getFridge().isPossibleToSwitchOn()
-			&& !this.isRestoreToOff()) {
-		    this.getFridge().switchOn();
-		    this.setRestoreToOff(true);
-		    // counting how many times it is reacting to up frequency
-		    this.aging.addReactUp();
-		} else {
-		    this.updateAggregator();
-		}
-//		this.initCounterReact();
-//	    }
+	    // this.addCounterReact();
+	    // // if it is time to react
+	    // if (this.getCounterReact() > this.reactDelay) {
+	    if (!this.getFridge().isCurrentOn() && this.getFridge().isPossibleToSwitchOn()
+		    && !this.isRestoreToOff()) {
+		this.getFridge().switchOn();
+		this.setRestoreToOff(true);
+		// counting how many times it is reacting to up frequency
+		this.aging.addReactUp();
+	    } else {
+		this.updateAggregator();
+	    }
+	    // this.initCounterReact();
+	    // }
 	    this.initCounterRestore();
 	} else if (this.isRestoreToOff()) {
 	    if (freqToReactAbove != 0d && FrequencyReader.getCurrentFreqValue() >= freqToReactAbove) {
@@ -217,9 +226,15 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	    }
 	}
     }
-    
-    //added delay of the consumers in the reaction
-    private void applyFreqControlV3(Double freqToReactUnder, Double freqToReactAbove) {
+
+    /**
+     * Similar to the V2 but in addition it has been added a reaction delay for
+     * the consumers
+     * 
+     * @param freqToReactUnder
+     * @param freqToReactAbove
+     */
+    private void applyFreqControlReactionDelay(Double freqToReactUnder, Double freqToReactAbove) {
 
 	if (freqToReactUnder != 0d && FrequencyReader.getCurrentFreqValue() <= freqToReactUnder
 		&& !this.isRestoreToOn()) {
@@ -244,13 +259,15 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	    } else {
 		this.addCounterRestore();
 	    }
-	    if (this.getCounterRestore() > restoreDelay || freqToReactUnder == 0d) { // restoreOn
-		logger.info(this.inputQueueName + " *2*2*2*2*2*2**2*2*2*2*2*2*2*2*22*2* "
-			+ this.restoreDelay + " - counter " + this.getCounterRestore());
-		this.updateAggregator();
-		this.setRestoreToOn(false);
-		this.getFridge().switchOn();
-		this.initCounterRestore();
+	    // restoreON
+	    if (this.getCounterRestore() > restoreDelay || freqToReactUnder == 0d) {
+		if (this.getFridge().switchOn()) {
+		    logger.info(this.inputQueueName + " *2*2*2*2*2*2**2*2*2*2*2*2*2*2*22*2* "
+			    + this.restoreDelay + " - counter " + this.getCounterRestore());
+		    this.updateAggregator();
+		    this.setRestoreToOn(false);
+		    this.initCounterRestore();
+		}
 	    }
 	}
 
@@ -279,34 +296,40 @@ public class AggregatorADRConsumer extends ADRConsumer {
 		this.addCounterRestore();
 	    }
 	    if (this.getCounterRestore() > restoreDelay || freqToReactAbove == 0d) {// restoreOff
-		logger.info(this.inputQueueName + " +2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2++2+2+"
-			+ this.restoreDelay + " - counter " + this.getCounterRestore());
-		this.updateAggregator();
-		this.setRestoreToOff(false);
-		this.getFridge().switchOff();
-		this.initCounterRestore();
+		if (this.getFridge().switchOff()) {
+		    logger.info(this.inputQueueName + " +2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2+2++2+2+"
+			    + this.restoreDelay + " - counter " + this.getCounterRestore());
+		    this.updateAggregator();
+		    this.setRestoreToOff(false);
+		    this.initCounterRestore();
+		}
 	    }
 	}
     }
 
     // generates update message content object with last updates
     protected UpdateMessageContent getCurrentUpdateMessageContent() {
-	if (this.getFridge().isCurrentOn()) {
+	// TODO missing the part where isCurrentOn but the status cannot be
+	// changed for a while
+	if (this.getFridge().isCurrentOn() && this.getFridge().isPossibleToSwitchOff()) {
 	    return SimulationMessageFactory.getUpdateMessageContent(this.getFridge()
 		    .getCurrentElectricPower(), this.getFridge().getCurrentElectricPower(), this
 		    .getFridge().getSecondsToTempMaxLimit(), this.getFridge()
 		    .getSecondsToTempMinLimit(), 0d, 0d, 0d, this.inputQueueName, this.aging);
-	} else {
+	} else if (!this.getFridge().isCurrentOn() && this.getFridge().isPossibleToSwitchOn()) {
 	    return SimulationMessageFactory.getUpdateMessageContent(this.getFridge()
 		    .getCurrentElectricPower(), this.getFridge().getCurrentElectricPower(), 0d, 0d,
 		    this.getFridge().getPtcl(), this.getFridge().getSecondsToTempMinLimit(), this
 			    .getFridge().getSecondsToTempMaxLimit(), this.inputQueueName,
 		    this.aging);
 	}
+	// if it is ON or OFF but it is not possible to change the status
+	return SimulationMessageFactory
+		.getUpdateMessageContent(this.getFridge().getCurrentElectricPower(), 0d, 0d, 0d,
+			0d, 0d, 0d, this.inputQueueName, this.aging);
     }
 
     protected void updateAggregator() {
-	// TODO Auto-generated method stub
 	UpdateMessageContent umc = this.getCurrentUpdateMessageContent();
 	lastUpdateSent = System.currentTimeMillis();
 	this.sendMessage(SimulationMessageFactory.getUpdateMessage(this.inputQueueName,

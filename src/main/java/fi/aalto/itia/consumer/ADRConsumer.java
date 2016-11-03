@@ -3,7 +3,6 @@ package fi.aalto.itia.consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.adr_em_common.SimulationElement;
 import fi.aalto.itia.models.FridgeModel;
 
@@ -15,10 +14,11 @@ public class ADRConsumer extends SimulationElement {
 	 */
     protected static final Logger logger = LoggerFactory.getLogger(ADRConsumer.class);
     private static final long serialVersionUID = 4328592954437775437L;
+    // prefix for queue names
     private static final String PREFIX_INPUT_QUEUE = "adrc_";
-    protected static final long MAX_TIME_FREQ_UPDATE = 3 * ADR_EM_Common.ONE_MIN;
-    private static final int RESTORE_DELAY_CONST = 0;
-    private static final int RESTORE_DELAY_VAR = 15;
+    //
+    private static final int CONST_DELAY = 15;
+    private static final int VARIABLE_DELAY = 15;
 
     private FridgeModel fridge;
     private final int ID;
@@ -43,11 +43,8 @@ public class ADRConsumer extends SimulationElement {
 	this.fridge = fridge;
 
 	// random generated delay to restore from DR action
-	this.restoreDelay = (int) (RESTORE_DELAY_CONST + Math.round(RESTORE_DELAY_VAR
-		* betaD.sample()));
-	this.reactDelay = (int) (RESTORE_DELAY_CONST + Math.round(RESTORE_DELAY_VAR
-		* betaD.sample()));
-
+	this.restoreDelay = (int) (CONST_DELAY + Math.round(VARIABLE_DELAY * betaD.sample()));
+	this.reactDelay = (int) (CONST_DELAY + Math.round(VARIABLE_DELAY * betaD.sample()));
     }
 
     public FridgeModel getFridge() {
@@ -62,33 +59,25 @@ public class ADRConsumer extends SimulationElement {
 	this.fridge = fridge;
     }
 
-    // TODO init procedure of the consumer
-    // TODO Registration message (it could be that in the content of the
-    // registration message there is already the first update
-    // TODO think how to monitor the frequency (it could be done centrally
-    // by he main consumer every second and there could be a method to call)
-
-    // TODO decide also how often the updates are sent, and with which
-    // policy (frequency & every status change?)
-    // if registration ok then proceed to the loop, start by controlling
-    // with temperature limits, then with instructions
-    // init register
-    // TODO get first UpdateMessageContent, register with random update
-    // message
-    // fridgeON
+    /**
+     * this function controls the fridge by means of the defined temperature
+     * thresholds.
+     * 
+     * @return true if the control has been executed / false if no control has
+     *         been performed
+     */
     protected boolean controlFridgeWithThresholds() {
-	// CONTROL Of the FRIDGE using the conditions of the fridges
 	// T > Tmax and notOn
-	if (this.getFridge().getCurrentTemperature() > (this.getFridge().getTemperatureSP() + this
-		.getFridge().getThermoBandDT()) && !this.getFridge().isCurrentOn()) {
+	if (this.getFridge().getCurrentTemperature() > this.getFridge().getMaxThresholdTemp()
+		&& !this.getFridge().isCurrentOn()) {
 	    this.getFridge().switchOn();
 	    this.setRestoreToOn(false);
 	    this.initCounterRestore();
 	    return true;
 	}
 	// T < Tmin and On
-	if (this.getFridge().getCurrentTemperature() < (this.getFridge().getTemperatureSP() - this
-		.getFridge().getThermoBandDT()) && this.getFridge().isCurrentOn()) {
+	if (this.getFridge().getCurrentTemperature() < this.fridge.getMinThresholdTemp()
+		&& this.getFridge().isCurrentOn()) {
 	    this.getFridge().switchOff();
 	    this.setRestoreToOff(false);
 	    this.initCounterRestore();
@@ -133,7 +122,7 @@ public class ADRConsumer extends SimulationElement {
 	counterRestore = 0;
     }
 
-    //Reaction delay methods
+    // Reaction delay methods
     public int getReactDelay() {
 	return reactDelay;
     }

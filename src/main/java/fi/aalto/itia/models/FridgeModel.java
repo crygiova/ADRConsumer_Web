@@ -15,7 +15,14 @@ import fi.aalto.itia.consumer.ADRConsumer;
 public class FridgeModel {
     private static final Logger logger = LoggerFactory.getLogger(FridgeModel.class);
     private static final int DATA_ACQUISITION_RATE = 3;// 60 once every minute
-    public int DELAY_BEFORE_CHANGING_STATUS;
+    // constant minimum delay before changing status for a fridge
+    private static final int CONST_DELAY_BEFORE_CHANGING_STATUS = 40;
+    //time delay before being capable to change status again
+    private int delayBeforeChangingStatus;
+
+    public void setDelayBeforeChangingStatus(int delayBeforeChangingStatus) {
+        this.delayBeforeChangingStatus = delayBeforeChangingStatus;
+    }
 
     private int counterDataAquisitionRate = 0;
     private int counterDelayBeforeChangingStatus = 0;
@@ -119,8 +126,8 @@ public class FridgeModel {
 	Random r = new Random();
 	// TODO CHANGE
 	// DELAY_BEFORE_CHANGING_STATUS = 180 + Math.round(120 * r.nextFloat());
-	DELAY_BEFORE_CHANGING_STATUS = 120;// 30 + Math.round(30 *
-					  // r.nextFloat());
+	delayBeforeChangingStatus = CONST_DELAY_BEFORE_CHANGING_STATUS
+		+ Math.round(CONST_DELAY_BEFORE_CHANGING_STATUS * r.nextFloat());
 
 	// TODO There is a problem here exp(-dt*tau) where dt is the disc time
 	// step!!!!
@@ -196,7 +203,7 @@ public class FridgeModel {
 	if (!possibleToSwitchOff || !possibleToSwitchOn) {
 	    // if the time delay has passed or
 	    // changes
-	    if (++counterDelayBeforeChangingStatus >= DELAY_BEFORE_CHANGING_STATUS) {
+	    if (++counterDelayBeforeChangingStatus >= delayBeforeChangingStatus) {
 		// if current on -> I can switch off after delay
 		// if current off -> I can switch on after delay
 		if (this.currentOnOff)
@@ -240,7 +247,7 @@ public class FridgeModel {
 	den = (this.currentTemperature - this.tAmb + this.coeffOfPerf
 		* (this.ptcl / this.thermalConductanceA));
 	double log = new Log().value(num / den);
-	//minus away here to get a positive number
+	// minus away here to get a positive number
 	return (1 / tau) * log;
     }
 
@@ -258,6 +265,24 @@ public class FridgeModel {
 	return (-1 / tau) * log;
     }
 
+    /**
+     * This method returns the max temperature threshold for the fridge.
+     * 
+     * @return
+     */
+    public double getMaxThresholdTemp() {
+	return this.getTemperatureSP() + this.getThermoBandDT();
+    }
+
+    /**
+     * This method returns the min temperature threshold for the fridge.
+     * 
+     * @return
+     */
+    public double getMinThresholdTemp() {
+	return this.getTemperatureSP() - this.getThermoBandDT();
+    }
+
     public boolean isUpdateLists() {
 	return updateLists;
     }
@@ -266,8 +291,8 @@ public class FridgeModel {
 	this.updateLists = updateLists;
     }
 
-    public int getDELAY_BEFORE_CHANGING_STATUS() {
-	return DELAY_BEFORE_CHANGING_STATUS;
+    public int getDelayBeforeChangingStatus() {
+	return delayBeforeChangingStatus;
     }
 
     public ADRConsumer getConsumer() {

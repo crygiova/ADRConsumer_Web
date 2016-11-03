@@ -5,7 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStream;
+
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -14,7 +14,6 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Properties;
 
-import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -31,7 +30,6 @@ import fi.aalto.itia.adr_em_common.ADR_EM_Common;
 import fi.aalto.itia.adr_em_common.SimulationElement;
 import fi.aalto.itia.consumer.ADRConsumer;
 import fi.aalto.itia.consumer.AggregatorADRConsumer;
-import fi.aalto.itia.consumer.BackUPADRConsumer;
 import fi.aalto.itia.consumer.FrequencyReader;
 import fi.aalto.itia.consumer.PolicyConsumer;
 import fi.aalto.itia.consumer.StatsAggregator;
@@ -45,9 +43,11 @@ import fi.aalto.itia.util.Utility;
 @Controller
 public class ConsumerController {
 
+    // Properties CONST
     private static final String FILE_NAME_PROPERTIES = "config.properties";
     private static final String NUMBER_OF_CONSUMERS = "N_CONSUMERS";
     private static final String USE_POLICIES = "USE_POLICIES";
+    // JSON OUTPUT FILE FOR STATS
     private static final String OUT_JSON_FILE = "aggStatsData.json";
 
     private static final Logger logger = LoggerFactory.getLogger(ConsumerController.class);
@@ -71,8 +71,7 @@ public class ConsumerController {
     public static Thread tFridgeManager;
     public static StatsAggregator statsAggregated;
     public static Thread tStatsAggregated;
-    // TODO WITH THIS WAY you should restart the server to apply changes in the
-    // config file! Better way TODO
+
     static {
 	properties = Utility.getProperties(FILE_NAME_PROPERTIES);
 	numberOfConsumers = Integer.parseInt(properties.getProperty(NUMBER_OF_CONSUMERS));
@@ -97,6 +96,7 @@ public class ConsumerController {
 	return "home";
     }
 
+    // Service used to start the simulation of the consumers
     @RequestMapping(value = "/startCons", method = RequestMethod.GET)
     public String startCons(Locale locale, Model model) {
 
@@ -114,6 +114,7 @@ public class ConsumerController {
 	return simulationStarted.toString();
     }
 
+    // Service used to stop the simulation
     @RequestMapping(value = "/stopCons", method = RequestMethod.GET)
     public String stopCons(Locale locale, Model model) {
 	if (simulationStarted) {
@@ -128,12 +129,14 @@ public class ConsumerController {
 	return "redirect:";
     }
 
+    // Return json data about the consumers
     @RequestMapping(value = "/consumers", method = RequestMethod.GET)
     public @ResponseBody String consumers(Locale locale, Model model) {
 	String json = new Gson().toJson(simulationElements.get(0).getFridge().getOnOffList());
 	return json;
     }
 
+    // return json data about one consumer
     @RequestMapping(value = "/consumers/{id}", method = RequestMethod.GET)
     public @ResponseBody String consumer(@PathVariable(value = "id") int index) {
 	String json = "";
@@ -145,6 +148,7 @@ public class ConsumerController {
 	return json;
     }
 
+    // return the number of consumers in the simulation
     @RequestMapping(value = "/consumers/number", method = RequestMethod.GET)
     public @ResponseBody String consumer() {
 	String jsonString = "";
@@ -153,6 +157,7 @@ public class ConsumerController {
 	return jsonString;
     }
 
+    // return the aggregated stats of the consumers for the selected simulation
     @RequestMapping(value = "/aggStats", method = RequestMethod.GET)
     public @ResponseBody String aggStats() {
 	String json = "";
@@ -179,6 +184,7 @@ public class ConsumerController {
 	return json;
     }
 
+    // saves the simulation aggregated data to a jsonFile
     @RequestMapping(value = "/saveAggStats", method = RequestMethod.GET)
     public @ResponseBody String saveAggStats() {
 	String json = "";
@@ -205,18 +211,16 @@ public class ConsumerController {
 	return json;
     }
 
+    // Initialization of the consumers
     public static void initConsumers() {
 	// generate fridges
-
 	fridgeManager = new FridgeManager(FridgeFactory.getNFridges(numberOfConsumers));
-
 	// SPEED up the first hour temperature + control with thresholds
 	fridgeManager.speedUp();
-
 	// add Consumers
 	simulationElements = new ArrayList<ADRConsumer>();
 
-	// Add as much as clients you want theoretically
+	// Based on the selected type of consumer
 	if (usePolicies) {
 	    for (int i = 0; i < numberOfConsumers; i++) {
 		simulationElements.add(i, new PolicyConsumer(i, fridgeManager.getFridges().get(i)));
@@ -227,6 +231,7 @@ public class ConsumerController {
 			.get(i)));
 	    }
 	}
+	// initialized the statistics component
 	statsAggregated = new StatsAggregator(simulationElements);
     }
 

@@ -16,7 +16,7 @@ public class FridgeTest {
 	double minT = fridgeModel.getTemperatureSP() - fridgeModel.getThermoBandDT();
 
 	System.out.println("Max : " + maxT + " Min:" + minT);
-	fridgeModel.DELAY_BEFORE_CHANGING_STATUS = -1;
+	fridgeModel.setDelayBeforeChangingStatus(-1);
 	// fridge ON
 	fridgeModel.switchOn();
 	System.out.println("TURN ON\n\n");
