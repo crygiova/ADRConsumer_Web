@@ -16,12 +16,12 @@ public class FridgeModel {
     private static final Logger logger = LoggerFactory.getLogger(FridgeModel.class);
     private static final int DATA_ACQUISITION_RATE = 3;// 60 once every minute
     // constant minimum delay before changing status for a fridge
-    private static final int CONST_DELAY_BEFORE_CHANGING_STATUS = 40;
-    //time delay before being capable to change status again
+    private static final int CONST_DELAY_BEFORE_CHANGING_STATUS = 10;
+    // time delay before being capable to change status again
     private int delayBeforeChangingStatus;
 
     public void setDelayBeforeChangingStatus(int delayBeforeChangingStatus) {
-        this.delayBeforeChangingStatus = delayBeforeChangingStatus;
+	this.delayBeforeChangingStatus = delayBeforeChangingStatus;
     }
 
     private int counterDataAquisitionRate = 0;
@@ -32,7 +32,7 @@ public class FridgeModel {
     // if false disable the users to keep track of the evolutin of dynamics
     private boolean updateLists = true;
 
-    // COEFFICIENTS OF THE FRIDG
+    // COEFFICIENTS OF THE FRIDGE
     /** Coefficient of performance */
     private double coeffOfPerf;
     /** Rated Power (w) */
@@ -161,7 +161,8 @@ public class FridgeModel {
 	    this.currentOnOff = true;
 	    this.currentElectricPower = ptcl;
 	    this.setPossibleToSwitchOff(false);
-	    this.setPossibleToSwitchOn(false);
+	    // TODO Verify
+	    this.setPossibleToSwitchOn(true);
 	    counterDelayBeforeChangingStatus = 0;
 	    return true;
 	}
@@ -173,7 +174,8 @@ public class FridgeModel {
 	if (possibleToSwitchOff) {
 	    this.currentOnOff = false;
 	    this.currentElectricPower = 0d;
-	    this.setPossibleToSwitchOff(false);
+	    // TODO Verify
+	    this.setPossibleToSwitchOff(true);
 	    this.setPossibleToSwitchOn(false);
 	    counterDelayBeforeChangingStatus = 0;
 	    return true;
@@ -192,7 +194,7 @@ public class FridgeModel {
 
     // Temperature Update Function
     // TODO Olli suggests to add some randomness
-    // TODO a certain number of updates is needed beforechanging status again
+    // TODO a certain number of updates is needed before changing status again
     public void updateTemperature() {
 	int bufferOnOff = 0;
 	if (currentOnOff)
@@ -206,10 +208,10 @@ public class FridgeModel {
 	    if (++counterDelayBeforeChangingStatus >= delayBeforeChangingStatus) {
 		// if current on -> I can switch off after delay
 		// if current off -> I can switch on after delay
-		if (this.currentOnOff)
-		    this.setPossibleToSwitchOff(true);
-		else
-		    this.setPossibleToSwitchOn(true);
+		// if (this.currentOnOff)
+		this.setPossibleToSwitchOff(true);
+		// else
+		this.setPossibleToSwitchOn(true);
 		this.useOnlyTimeDelay = false;
 	    }
 	    // if the temperature is out of the

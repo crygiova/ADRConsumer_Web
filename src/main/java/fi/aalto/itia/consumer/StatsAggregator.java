@@ -110,13 +110,17 @@ public class StatsAggregator extends SimulationElement {
 	    currentADR = 0d;
 	    currentAggregatedConsumption = 0d;
 	    for (ADRConsumer cons : consumers) {
-		currentAggregatedConsumption += cons.getFridge().getCurrentElectricPower();
+		currentAggregatedConsumption += cons.getFridgeController().getFridge()
+			.getCurrentElectricPower();
 		// he is consuming for ADR
 		// TODO this is to see which is the real ADR ina given moment
-		if (cons.isRestoreToOff()) {
-		    currentADR += cons.getFridge().getPtcl();
-		} else if (cons.isRestoreToOn()) {// he is switched off forADR
-		    currentADR -= cons.getFridge().getPtcl();
+		if (cons.getFridgeController().isRestoreToOff()) {
+		    currentADR += cons.getFridgeController().getFridge().getPtcl();
+		} else if (cons.getFridgeController().isRestoreToOn()) {// he is
+									// switched
+									// off
+									// forADR
+		    currentADR -= cons.getFridgeController().getFridge().getPtcl();
 		}
 	    }
 	    aggregatedConsumption.add(currentAggregatedConsumption);

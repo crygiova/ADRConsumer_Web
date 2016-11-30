@@ -132,7 +132,8 @@ public class ConsumerController {
     // Return json data about the consumers
     @RequestMapping(value = "/consumers", method = RequestMethod.GET)
     public @ResponseBody String consumers(Locale locale, Model model) {
-	String json = new Gson().toJson(simulationElements.get(0).getFridge().getOnOffList());
+	String json = new Gson().toJson(simulationElements.get(0).getFridgeController().getFridge()
+		.getOnOffList());
 	return json;
     }
 
@@ -144,7 +145,7 @@ public class ConsumerController {
 	// annotation of gson library
 	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	if (simulationElements.size() > index)
-	    json = jsonGen.toJson(simulationElements.get(index).getFridge());
+	    json = jsonGen.toJson(simulationElements.get(index).getFridgeController().getFridge());
 	return json;
     }
 
