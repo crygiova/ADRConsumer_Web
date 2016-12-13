@@ -13,7 +13,7 @@ public class FridgeManager implements Runnable {
     private static final int UPDATE_TIME = 900;
     // during speed up keeps the lists updated or not
     private static final boolean KEEP_INIT_LISTS_UPDATED = false;
-    private static final boolean KEEP_SIMULATION_LISTS_UPDATED = true;
+    private static final boolean KEEP_SIMULATION_LISTS_UPDATED = false;
 
     ArrayList<FridgeModel> fridges = new ArrayList<FridgeModel>();
     private boolean keepGoing = true;

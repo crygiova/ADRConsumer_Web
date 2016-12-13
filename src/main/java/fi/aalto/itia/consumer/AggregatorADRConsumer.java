@@ -22,10 +22,11 @@ public class AggregatorADRConsumer extends ADRConsumer {
     /**
      * 
      */
+
     private static final long serialVersionUID = 5769062501178133949L;
 
     // 3 minutes is the maximum time for updating the status to the aggregator
-    protected static final long MAX_TIME_FREQ_UPDATE = 3 * ADR_EM_Common.ONE_MIN;
+    protected static final long MAX_TIME_FREQ_UPDATE = 5 * ADR_EM_Common.ONE_MIN;
 
     protected boolean lastInstructionUpdated;
     // aging parameter of the Consumer
@@ -62,11 +63,15 @@ public class AggregatorADRConsumer extends ADRConsumer {
 		freqToReactAbove = lastInstruction.getAboveNominalFrequency();
 		lastInstructionUpdated = false;
 	    }
+
 	    // XXX this is the control
 	    if (!this.getFridgeController().controlFridgeWithThresholds()) {
 		// applyFreqControlReactionDelayOriginal(freqToReactUnder,
 		// freqToReactAbove);
-		applyFreqControlReactionDelay(freqToReactUnder, freqToReactAbove);
+		// applyFreqControlReactionDelay(freqToReactUnder,
+		// freqToReactAbove);
+		// IF both 0
+		applyFreqControlAVG(freqToReactUnder, freqToReactAbove);
 	    } else {
 		// status changes means cannot do ADR
 		this.fcrd.initCounterRestore();
@@ -77,8 +82,6 @@ public class AggregatorADRConsumer extends ADRConsumer {
 		this.updateAggregator();
 	    }
 	    try {
-		// delay of the cycle
-		//Thread.sleep(Math.round((2 + 3 * Utility.getRandom()) * ADR_EM_Common.ONE_SECOND));
 		Thread.sleep(Math.round(ADR_EM_Common.ONE_SECOND));
 	    } catch (InterruptedException e) {
 		e.printStackTrace();
@@ -86,6 +89,91 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	}
     }
 
+    /**
+     * Similar to the V2 but in addition it has been added a reaction delay for
+     * the consumers
+     * 
+     * @param freqToReactUnder
+     * @param freqToReactAbove
+     */
+    private void applyFreqControlAVG(Double freqToReactUnder, Double freqToReactAbove) {
+
+	if (freqToReactUnder == 0d && freqToReactAbove == 0d) {
+	    this.setMyState(ConsumerState.IDLE);
+	}
+	// DeadBandControl
+	else if (freqToReactAbove != 0d && freqToReactAbove < FrequencyReader.NOMINAL_FREQ) {
+	    this.setMyState(ConsumerState.DEAD_CONTROL_OVER);
+	} else if (freqToReactUnder != 0d && freqToReactUnder > FrequencyReader.NOMINAL_FREQ) {
+	    this.setMyState(ConsumerState.DEAD_CONTROL_UNDER);
+	}
+
+	if (freqToReactUnder != 0d && FrequencyReader.getFilteredFrequency() <= freqToReactUnder
+		&& !this.getFridgeController().isRestoreToOn()) {
+	    // if it is time to react
+	    if (this.getFridgeController().reactDownFrequency()) {
+		// exclude the dead band control
+		if (freqToReactUnder < FrequencyReader.NOMINAL_FREQ) {
+		    // only if normal control
+		    this.aging.addReactDw();
+		    this.setMyStateExcludeDeadControlUnder(ConsumerState.REACTING_UNDER,
+			    freqToReactUnder);
+		}
+	    } else {
+		this.setMyStateExcludeDeadControlUnder(ConsumerState.INOPERATIVE_UNDER,
+			freqToReactUnder);
+		// update the aggregator
+		this.updateAggregator();
+	    }
+	} else if (this.getFridgeController().isRestoreToOn()) {
+	    // restoreON
+	    if (FrequencyReader.getFilteredFrequency() >= freqToReactUnder
+		    || freqToReactUnder == 0d) {
+		if (this.getFridgeController().restoreDownFrequency()) {
+		    this.updateAggregator();
+		    // set the state if not deadband control
+		    if (freqToReactUnder != 0d && (freqToReactUnder < FrequencyReader.NOMINAL_FREQ)) {
+			this.setMyStateExcludeDeadControlUnder(ConsumerState.INOPERATIVE_UNDER,
+				freqToReactUnder);
+		    }
+		}
+	    }
+	} else if (freqToReactUnder != 0d && (freqToReactUnder < FrequencyReader.NOMINAL_FREQ)) {
+	    this.setMyStateExcludeDeadControlUnder(ConsumerState.MONITORING_UNDER, freqToReactUnder);
+	}
+	// 2//
+	if (freqToReactAbove != 0d && FrequencyReader.getFilteredFrequency() >= freqToReactAbove
+		&& !this.getFridgeController().isRestoreToOff()) {
+	    if (this.getFridgeController().reactUpFrequency()) {
+		// exclude the dead band control
+		if (freqToReactAbove > FrequencyReader.NOMINAL_FREQ) {
+		    // counting how many times it is reacting to up frequency
+		    this.aging.addReactUp();
+		    this.setMyStateExcludeDeadControlOver(ConsumerState.REACTING_OVER,
+			    freqToReactAbove);
+		}
+	    } else {
+		this.updateAggregator();
+		this.setMyStateExcludeDeadControlOver(ConsumerState.INOPERATIVE_OVER,
+			freqToReactAbove);
+	    }
+	} else if (this.getFridgeController().isRestoreToOff()) {
+	    if (FrequencyReader.getFilteredFrequency() <= freqToReactAbove
+		    || freqToReactAbove == 0d) {// restoreOff
+		if (this.getFridgeController().restoreUpFrequency()) {
+		    this.updateAggregator();
+		    if (freqToReactAbove != 0d && freqToReactAbove > FrequencyReader.NOMINAL_FREQ) {
+			this.setMyStateExcludeDeadControlOver(ConsumerState.INOPERATIVE_OVER,
+				freqToReactAbove);
+		    }
+		}
+	    }
+	} else if (freqToReactAbove != 0d && freqToReactAbove > FrequencyReader.NOMINAL_FREQ) {
+	    this.setMyStateExcludeDeadControlUnder(ConsumerState.MONITORING_OVER, freqToReactUnder);
+	}
+    }
+
+    
     /**
      * Similar to the V2 but in addition it has been added a reaction delay for
      * the consumers

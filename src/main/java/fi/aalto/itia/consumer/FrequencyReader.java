@@ -7,6 +7,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.taglibs.standard.lang.jstl.Coercions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,17 +16,32 @@ public class FrequencyReader implements Runnable {
     // This class reads the frequency values from the aggregator.
     private static final Logger logger = LoggerFactory.getLogger(FrequencyReader.class);
     private static final String URL_FREQ_MEASURE = "http://localhost:8080/itia/frequency";
-    private static final int FREQ_READING = 3000;// Every 3 seconds
-    private static Double NOMINAL_FREQ = 50d;
+    private static final int FREQ_READING = 1000;// Every second
+    public static final double NOMINAL_FREQ = 50d;
+    private static double DEAD_BAND = 0.02d;
+    private static final double MAX_FREQ_DEV = 0.1d;
+
+    private static double filteredFrequency = NOMINAL_FREQ;
+
+    // private double coeff = 0.5d;
+    // Gamma is in seconds
+    private static double gamma = 120d;
+    private static double betaCoeff = -gamma / Math.log(1 - 0.95);
+    private static double coeff = Math.exp(-1 / betaCoeff);
 
     private static FrequencyReader singleton;
     private static AtomicReference<Double> currentFreqValue = new AtomicReference<Double>();
 
     private static boolean keepReading;
+    private static boolean filterFrequency;
     private static URL frequencyProducerURL;
     private static BufferedReader frequencyReader;
 
     private static Thread freq_t;
+
+    // inject errors in the frequency filtered
+    private static boolean errors = false;
+    private static double perErrors = 0d;
 
     private FrequencyReader() {
 	keepReading = true;
@@ -37,11 +53,16 @@ public class FrequencyReader implements Runnable {
 	currentFreqValue.set(NOMINAL_FREQ);
     }
 
-    public static FrequencyReader startFrequencyReader() {
+    public static FrequencyReader startFrequencyReader( boolean _filterFreq, boolean frerrors, double perFRErrors) {
 	if (singleton == null) {
 	    singleton = new FrequencyReader();
 	    freq_t = new Thread(singleton);
 	    freq_t.start();
+	}
+	filterFrequency = _filterFreq;
+	errors = frerrors;
+	if (errors) {
+	    perErrors = perFRErrors;
 	}
 	return singleton;
     }
@@ -56,8 +77,6 @@ public class FrequencyReader implements Runnable {
 			frequencyProducerURL.openStream()));
 		while ((line = frequencyReader.readLine()) != null) {
 		    currentFreqValue.set(Double.valueOf(line));
-
-		    logger.info(currentFreqValue.get().toString());
 		}
 
 	    } catch (IOException e) {
@@ -70,7 +89,29 @@ public class FrequencyReader implements Runnable {
 	    } catch (InterruptedException e) {
 		e.printStackTrace();
 	    }
+	    filteredFrequency = coeff * filteredFrequency + (1 - coeff) * currentFreqValue.get();
+
+	    logger.info(currentFreqValue.get().toString() + " - FF -" + filteredFrequency);
 	}
+    }
+
+    public static double getFilteredFrequency() {
+	// TODO in order to work with errors the frequency should be altered at
+	// the consumer level not at the frequency reader level
+	if (errors && Math.random() < perErrors) {
+	    // return an error filtered frequency
+	    return Math.signum(Math.random() - 0.5d) * filteredFrequency - (0.01);
+	}
+	if(!filterFrequency)
+	{
+	    //if required to not filter the frequency
+	    return getCurrentFreqValue();
+	}
+	return filteredFrequency;
+    }
+
+    public static void setFilteredFrequency(double filteredFrequency) {
+	FrequencyReader.filteredFrequency = filteredFrequency;
     }
 
     public static Double getCurrentFreqValue() {
@@ -79,6 +120,24 @@ public class FrequencyReader implements Runnable {
 
     public static boolean isKeepReading() {
 	return keepReading;
+    }
+
+    public static double calculateDesiredADR(double baseLevel) {
+	double newDesiredADR = 0d;
+	double freqDeviation = filteredFrequency - NOMINAL_FREQ;
+	double adrBand = MAX_FREQ_DEV - DEAD_BAND;// 0.08
+	double absFreqDeviation = Math.abs(freqDeviation);
+	if (absFreqDeviation < DEAD_BAND) {
+	    newDesiredADR = 0d;
+	} else if (absFreqDeviation > MAX_FREQ_DEV) {
+	    newDesiredADR = Math.signum(freqDeviation) * 40000;
+	} else {
+	    // in the reaction band
+	    newDesiredADR = Math.signum(freqDeviation) * (absFreqDeviation - DEAD_BAND) * 40000
+		    / (MAX_FREQ_DEV - DEAD_BAND);
+	}
+
+	return baseLevel + newDesiredADR;
     }
 
     public static void setKeepReadingToFalse() {

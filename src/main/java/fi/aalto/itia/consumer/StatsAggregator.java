@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 
+import org.omg.CORBA.FREE_MEM;
+
 import com.google.gson.annotations.Expose;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Consumer;
@@ -39,14 +41,21 @@ public class StatsAggregator extends SimulationElement {
     // takes into account only which is at any given moment the ADR of the
     // consumers (due to the problem of the constant nominal consumption)
     private ArrayList<Double> aggregatedADR;
+    @Expose
+    // desired ADR as defined in the paper
+    private ArrayList<Double> desiredADR;
+    private double desiredADRValue = 0;
 
     @Expose
     private ArrayList<Double> frequency;
+    @Expose
+    private ArrayList<Double> filteredFrequency;
     private ArrayList<ADRConsumer> consumers;
     private Double currentAggregatedConsumption;
     private Double currentADR;
 
     @Expose
+    // Nominal base consumption
     private ArrayList<Double> baseLevelAgg;
     private Double currentBaseLevelAgg = 0d;
 
@@ -61,6 +70,26 @@ public class StatsAggregator extends SimulationElement {
     // Used for taking register of updates of the aggregator to the consumers
     private ArrayList<Integer> updateAllocation;
 
+    // Consumers states
+    @Expose
+    private ArrayList<Integer> idleState;
+    @Expose
+    private ArrayList<Integer> monitoringOverState;
+    @Expose
+    private ArrayList<Integer> monitoringUnderState;
+    @Expose
+    private ArrayList<Integer> inoperativeUnderState;
+    @Expose
+    private ArrayList<Integer> inoperativeOverState;
+    @Expose
+    private ArrayList<Integer> reactingUnderState;
+    @Expose
+    private ArrayList<Integer> reactingOverState;
+    @Expose
+    private ArrayList<Integer> deadUnderState;
+    @Expose
+    private ArrayList<Integer> deadOverState;
+
     private int counterUpdateAging = 0;
 
     /**
@@ -70,11 +99,24 @@ public class StatsAggregator extends SimulationElement {
 	super(ADR_EM_Common.STATS_NAME_QUEUE);
 	this.consumers = simulationElements;
 	frequency = new ArrayList<Double>();
+	filteredFrequency = new ArrayList<Double>();
 	aggregatedConsumption = new ArrayList<Double>();
 	consumersAging = new ArrayList<AgingADRConsumer>();
 	updateAllocation = new ArrayList<Integer>();
 	aggregatedADR = new ArrayList<Double>();
 	baseLevelAgg = new ArrayList<Double>();
+	desiredADR = new ArrayList<Double>();
+	// XXX Consumers STates
+	idleState = new ArrayList<Integer>();
+	monitoringOverState = new ArrayList<Integer>();
+	monitoringUnderState = new ArrayList<Integer>();
+	inoperativeOverState = new ArrayList<Integer>();
+	inoperativeUnderState = new ArrayList<Integer>();
+	reactingOverState = new ArrayList<Integer>();
+	reactingUnderState = new ArrayList<Integer>();
+	deadOverState = new ArrayList<Integer>();
+	deadUnderState = new ArrayList<Integer>();
+
 	// init aging for all consumers
 	for (ADRConsumer cons : consumers) {
 	    if (cons instanceof AggregatorADRConsumer) {
@@ -82,7 +124,6 @@ public class StatsAggregator extends SimulationElement {
 	    }
 	}
 	startConsumingMq();
-
     }
 
     @Override
@@ -109,6 +150,9 @@ public class StatsAggregator extends SimulationElement {
 
 	    currentADR = 0d;
 	    currentAggregatedConsumption = 0d;
+	    int idle = 0, reactUnder = 0, reactOver = 0, monitorUnder = 0, monitorOver = 0;
+	    int inopUnder = 0, inopOver = 0, deadOver = 0, deadUnder = 0;
+
 	    for (ADRConsumer cons : consumers) {
 		currentAggregatedConsumption += cons.getFridgeController().getFridge()
 			.getCurrentElectricPower();
@@ -122,18 +166,58 @@ public class StatsAggregator extends SimulationElement {
 									// forADR
 		    currentADR -= cons.getFridgeController().getFridge().getPtcl();
 		}
+		// TODO count the states
+		switch (cons.getMyState()) {
+		case IDLE:
+		    idle++;
+		    break;
+		case REACTING_UNDER:
+		    reactUnder++;
+		    break;
+		case REACTING_OVER:
+		    reactOver++;
+		    break;
+		case MONITORING_UNDER:
+		    monitorUnder++;
+		    break;
+		case MONITORING_OVER:
+		    monitorOver++;
+		    break;
+		case INOPERATIVE_UNDER:
+		    inopUnder++;
+		    break;
+		case INOPERATIVE_OVER:
+		    inopOver++;
+		    break;
+		case DEAD_CONTROL_OVER:
+		    deadOver++;
+		    break;
+		case DEAD_CONTROL_UNDER:
+		    deadUnder++;
+		    break;
+		default:
+		    break;
+		}
 	    }
+	    // real consumption of the system
 	    aggregatedConsumption.add(currentAggregatedConsumption);
+	    // quantity of ADR relative to zero
 	    aggregatedADR.add(currentADR);
-	    frequency.add(FrequencyReader.getCurrentFreqValue());
+	    // first loop
+	    double currentBase = 0d;
+	    if (currentBaseLevelAgg == 0d) {
+		currentBase = currentAggregatedConsumption;
+	    } else {
+		currentBase = currentBaseLevelAgg;
+	    }
+	    baseLevelAgg.add(currentBase);
+	    desiredADRValue = FrequencyReader.calculateDesiredADR(currentBase);
+	    desiredADR.add(desiredADRValue);
 	    // update current time simulation
 	    currentTime = System.currentTimeMillis() - startTime;
-	    // first loop
-	    if (currentBaseLevelAgg == 0d) {
-		baseLevelAgg.add(currentAggregatedConsumption - currentADR);
-	    } else {
-		baseLevelAgg.add(currentBaseLevelAgg);
-	    }
+
+	    frequency.add(FrequencyReader.getCurrentFreqValue());
+	    filteredFrequency.add(FrequencyReader.getFilteredFrequency());
 	    // send update to the aggregator
 	    if (++counter > FREQ_UPDATES_NOMINAL_CONS_TO_AGG) {
 		counter = 0;
@@ -141,6 +225,16 @@ public class StatsAggregator extends SimulationElement {
 			inputQueueName, ADR_EM_Common.AGG_INPUT_QUEUE, new StatsToAggUpdateContent(
 				currentAggregatedConsumption - currentADR)));
 	    }
+	    // States of the consumers
+	    idleState.add(idle);
+	    monitoringOverState.add(monitorOver);
+	    monitoringUnderState.add(monitorUnder);
+	    inoperativeOverState.add(inopOver);
+	    inoperativeUnderState.add(inopUnder);
+	    reactingOverState.add(reactOver);
+	    reactingUnderState.add(reactUnder);
+	    deadOverState.add(deadOver);
+	    deadUnderState.add(deadUnder);
 	}
     }
 
@@ -165,8 +259,6 @@ public class StatsAggregator extends SimulationElement {
 			currentBaseLevelAgg = ((StatsToAggUpdateContent) sm.getContent())
 				.getCurrentNominalAggregatedConsumption();
 		    } else {
-			System.out
-				.println("/*-/*-/*-/*/*-/*/*-/*-/*-/*/*-/*-/*/*/*-/*-/*/*-*/*--*/*-*/*-**-*/*-*/*-*/*-*/*-*/-*/-*");
 			aggAllocationUpdate = true;
 		    }
 		}
