@@ -370,9 +370,9 @@ public class AggregatorADRConsumer extends ADRConsumer {
 
     protected boolean registerToAggregator(UpdateMessageContent firstUpdate) {
 	// send registration message
-	// TODO change
+	// no delay
 	this.sendMessage(SimulationMessageFactory.getRegisterMessage(this.inputQueueName,
-		ADR_EM_Common.AGG_INPUT_QUEUE, firstUpdate));
+		ADR_EM_Common.AGG_INPUT_QUEUE, firstUpdate), false);
 	SimulationMessage reg = this.waitForMessage();
 	lastUpdateSent = System.currentTimeMillis();
 	if (reg.getHeader().compareTo(ADR_EM_Common.ACCEPT_REG_HEADER) == 0) {

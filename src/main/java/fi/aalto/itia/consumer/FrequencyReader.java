@@ -11,12 +11,15 @@ import org.apache.taglibs.standard.lang.jstl.Coercions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import fi.aalto.itia.adr_em_common.ADR_EM_Common;
+
 public class FrequencyReader implements Runnable {
 
     // This class reads the frequency values from the aggregator.
     private static final Logger logger = LoggerFactory.getLogger(FrequencyReader.class);
     private static final String URL_FREQ_MEASURE = "http://localhost:8080/itia/frequency";
-    private static final int FREQ_READING = 1000;// Every second
+    private static final int FREQ_READING = ADR_EM_Common.ONE_SECOND;// Every second
+    private static final double TARGET_FLEX = ADR_EM_Common.TARGET_FLEX;
     public static final double NOMINAL_FREQ = 50d;
     private static double DEAD_BAND = 0.02d;
     private static final double MAX_FREQ_DEV = 0.1d;
@@ -130,10 +133,10 @@ public class FrequencyReader implements Runnable {
 	if (absFreqDeviation < DEAD_BAND) {
 	    newDesiredADR = 0d;
 	} else if (absFreqDeviation > MAX_FREQ_DEV) {
-	    newDesiredADR = Math.signum(freqDeviation) * 40000;
+	    newDesiredADR = Math.signum(freqDeviation) * TARGET_FLEX;
 	} else {
 	    // in the reaction band
-	    newDesiredADR = Math.signum(freqDeviation) * (absFreqDeviation - DEAD_BAND) * 40000
+	    newDesiredADR = Math.signum(freqDeviation) * (absFreqDeviation - DEAD_BAND) * TARGET_FLEX
 		    / (MAX_FREQ_DEV - DEAD_BAND);
 	}
 

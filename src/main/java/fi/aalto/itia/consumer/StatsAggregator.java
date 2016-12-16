@@ -1,11 +1,17 @@
 package fi.aalto.itia.consumer;
 
+import java.io.FileWriter;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 
 import org.omg.CORBA.FREE_MEM;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.Expose;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Consumer;
@@ -70,6 +76,9 @@ public class StatsAggregator extends SimulationElement {
     // Used for taking register of updates of the aggregator to the consumers
     private ArrayList<Integer> updateAllocation;
 
+    // JSON OUTPUT FILE FOR STATS
+    private static final String OUT_JSON_FILE = "aggStatsData.json";
+    
     // Consumers states
     @Expose
     private ArrayList<Integer> idleState;
@@ -91,6 +100,8 @@ public class StatsAggregator extends SimulationElement {
     private ArrayList<Integer> deadOverState;
 
     private int counterUpdateAging = 0;
+    //counts the total updates of the aggregator
+    protected int countAggAllocationUpdates = 0;
 
     /**
      * @param simulationElements
@@ -221,9 +232,10 @@ public class StatsAggregator extends SimulationElement {
 	    // send update to the aggregator
 	    if (++counter > FREQ_UPDATES_NOMINAL_CONS_TO_AGG) {
 		counter = 0;
+		//no Delay
 		this.sendMessage(SimulationMessageFactory.getStatsToAggUpdateMessage(
 			inputQueueName, ADR_EM_Common.AGG_INPUT_QUEUE, new StatsToAggUpdateContent(
-				currentAggregatedConsumption - currentADR)));
+				currentAggregatedConsumption - currentADR)), false);
 	    }
 	    // States of the consumers
 	    idleState.add(idle);
@@ -242,6 +254,7 @@ public class StatsAggregator extends SimulationElement {
     // the consumers
     public void startConsumingMq() {
 	Consumer consumer = new DefaultConsumer(dRChannel) {
+
 	    @Override
 	    public void handleDelivery(String consumerTag, Envelope envelope,
 		    AMQP.BasicProperties properties, byte[] body) throws IOException {
@@ -259,7 +272,13 @@ public class StatsAggregator extends SimulationElement {
 			currentBaseLevelAgg = ((StatsToAggUpdateContent) sm.getContent())
 				.getCurrentNominalAggregatedConsumption();
 		    } else {
+			//Total reallocation from the aggregator
+			//TODO at the 5th -> save data
 			aggAllocationUpdate = true;
+			if(++countAggAllocationUpdates  == 5)
+			{
+			    saveAggregatorStats();
+			}
 		    }
 		}
 	    }
@@ -269,6 +288,29 @@ public class StatsAggregator extends SimulationElement {
 	} catch (IOException e) {
 	    e.printStackTrace();
 	}
+    }
+    
+    public String saveAggregatorStats(){
+	String json = "";
+	// only the elements with the expose annotation are returned. @exposed
+	// annotation of gson library
+	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+	json = jsonGen.toJson(this);
+	// save the content in output
+	try {
+	    DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy_HH-mm-ss_");
+	    // get current date time with Calendar()
+	    Calendar cal = Calendar.getInstance();
+	    FileWriter file = new FileWriter(ADR_EM_Common.OUT_FILE_DIR
+		    + dateFormat.format(cal.getTime()) + OUT_JSON_FILE);
+	    file.write(json);
+	    file.flush();
+	    file.close();
+
+	} catch (IOException e) {
+	    e.printStackTrace();
+	}
+	return json;
     }
 
     public ArrayList<Double> getAggregatedConsumption() {

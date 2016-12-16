@@ -52,9 +52,6 @@ public class ConsumerController {
     private static final String PER_FR_ERRORS = "PER_FR_ERRORS";
     private static final String FILTER_FREQ = "FILTER_FREQ";
 
-    // JSON OUTPUT FILE FOR STATS
-    private static final String OUT_JSON_FILE = "aggStatsData.json";
-
     private static final Logger logger = LoggerFactory.getLogger(ConsumerController.class);
 
     private static Properties properties;
@@ -203,29 +200,11 @@ public class ConsumerController {
     // saves the simulation aggregated data to a jsonFile
     @RequestMapping(value = "/saveAggStats", method = RequestMethod.GET)
     public @ResponseBody String saveAggStats() {
-	String json = "";
-	// only the elements with the expose annotation are returned. @exposed
-	// annotation of gson library
-	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	if (statsAggregated != null)
-	    json = jsonGen.toJson(statsAggregated);
-	// save the content in output
-	try {
-	    DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy_HH-mm-ss_");
-	    // get current date time with Calendar()
-	    Calendar cal = Calendar.getInstance();
-	    FileWriter file = new FileWriter(ADR_EM_Common.OUT_FILE_DIR
-		    + dateFormat.format(cal.getTime()) + OUT_JSON_FILE);
-	    file.write(json);
-	    file.flush();
-	    file.close();
-
-	} catch (IOException e) {
-	    e.printStackTrace();
-	}
-
-	return json;
+	    return statsAggregated.saveAggregatorStats();
+	return null;
     }
+    
 
     // Initialization of the consumers
     public static void initConsumers() {

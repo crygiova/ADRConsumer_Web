@@ -5,12 +5,14 @@ import java.util.ArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import fi.aalto.itia.adr_em_common.ADR_EM_Common;
+
 public class FridgeManager implements Runnable {
 
     @SuppressWarnings("unused")
     private static final Logger logger = LoggerFactory.getLogger(FridgeManager.class);
     private static final int INIT_TIME = 24 * 3600;//24 * 3600;// one hour of speed up
-    private static final int UPDATE_TIME = 900;
+    private static final int UPDATE_TIME = ADR_EM_Common.ONE_SECOND;
     // during speed up keeps the lists updated or not
     private static final boolean KEEP_INIT_LISTS_UPDATED = false;
     private static final boolean KEEP_SIMULATION_LISTS_UPDATED = false;
