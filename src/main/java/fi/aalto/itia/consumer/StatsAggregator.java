@@ -1,9 +1,17 @@
 package fi.aalto.itia.consumer;
 
+import java.io.FileWriter;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 
+import org.omg.CORBA.FREE_MEM;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.Expose;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Consumer;
@@ -39,14 +47,21 @@ public class StatsAggregator extends SimulationElement {
     // takes into account only which is at any given moment the ADR of the
     // consumers (due to the problem of the constant nominal consumption)
     private ArrayList<Double> aggregatedADR;
+    @Expose
+    // desired ADR as defined in the paper
+    private ArrayList<Double> desiredADR;
+    private double desiredADRValue = 0;
 
     @Expose
     private ArrayList<Double> frequency;
+    @Expose
+    private ArrayList<Double> filteredFrequency;
     private ArrayList<ADRConsumer> consumers;
     private Double currentAggregatedConsumption;
     private Double currentADR;
 
     @Expose
+    // Nominal base consumption
     private ArrayList<Double> baseLevelAgg;
     private Double currentBaseLevelAgg = 0d;
 
@@ -61,7 +76,36 @@ public class StatsAggregator extends SimulationElement {
     // Used for taking register of updates of the aggregator to the consumers
     private ArrayList<Integer> updateAllocation;
 
+    // JSON OUTPUT FILE FOR STATS
+    private static final String OUT_JSON_FILE = "aggStatsData.json";
+    
+    // Consumers states
+    @Expose
+    private ArrayList<Integer> idleState;
+    @Expose
+    private ArrayList<Integer> availableUnderState;
+    @Expose
+    private ArrayList<Integer> availableOverState;
+    @Expose
+    private ArrayList<Integer> monitoringOverState;
+    @Expose
+    private ArrayList<Integer> monitoringUnderState;
+    @Expose
+    private ArrayList<Integer> inoperativeUnderState;
+    @Expose
+    private ArrayList<Integer> inoperativeOverState;
+    @Expose
+    private ArrayList<Integer> reactingUnderState;
+    @Expose
+    private ArrayList<Integer> reactingOverState;
+    @Expose
+    private ArrayList<Integer> deadUnderState;
+    @Expose
+    private ArrayList<Integer> deadOverState;
+    
     private int counterUpdateAging = 0;
+    //counts the total updates of the aggregator
+    protected int countAggAllocationUpdates = 0;
 
     /**
      * @param simulationElements
@@ -70,11 +114,27 @@ public class StatsAggregator extends SimulationElement {
 	super(ADR_EM_Common.STATS_NAME_QUEUE);
 	this.consumers = simulationElements;
 	frequency = new ArrayList<Double>();
+	filteredFrequency = new ArrayList<Double>();
 	aggregatedConsumption = new ArrayList<Double>();
 	consumersAging = new ArrayList<AgingADRConsumer>();
 	updateAllocation = new ArrayList<Integer>();
 	aggregatedADR = new ArrayList<Double>();
 	baseLevelAgg = new ArrayList<Double>();
+	desiredADR = new ArrayList<Double>();
+	// XXX Consumers STates
+	idleState = new ArrayList<Integer>();
+	availableUnderState = new ArrayList<Integer>();
+	availableOverState = new ArrayList<Integer>();
+	idleState = new ArrayList<Integer>();
+	monitoringOverState = new ArrayList<Integer>();
+	monitoringUnderState = new ArrayList<Integer>();
+	inoperativeOverState = new ArrayList<Integer>();
+	inoperativeUnderState = new ArrayList<Integer>();
+	reactingOverState = new ArrayList<Integer>();
+	reactingUnderState = new ArrayList<Integer>();
+	deadOverState = new ArrayList<Integer>();
+	deadUnderState = new ArrayList<Integer>();
+
 	// init aging for all consumers
 	for (ADRConsumer cons : consumers) {
 	    if (cons instanceof AggregatorADRConsumer) {
@@ -82,7 +142,6 @@ public class StatsAggregator extends SimulationElement {
 	    }
 	}
 	startConsumingMq();
-
     }
 
     @Override
@@ -109,34 +168,101 @@ public class StatsAggregator extends SimulationElement {
 
 	    currentADR = 0d;
 	    currentAggregatedConsumption = 0d;
+	    int idle = 0, reactUnder = 0, reactOver = 0, monitorUnder = 0, monitorOver = 0;
+	    int inopUnder = 0, inopOver = 0, deadOver = 0, deadUnder = 0;
+	    int availableUnder = 0, availableOver = 0;
+
 	    for (ADRConsumer cons : consumers) {
-		currentAggregatedConsumption += cons.getFridge().getCurrentElectricPower();
+		currentAggregatedConsumption += cons.getFridgeController().getFridge()
+			.getCurrentElectricPower();
 		// he is consuming for ADR
 		// TODO this is to see which is the real ADR ina given moment
-		if (cons.isRestoreToOff()) {
-		    currentADR += cons.getFridge().getPtcl();
-		} else if (cons.isRestoreToOn()) {// he is switched off forADR
-		    currentADR -= cons.getFridge().getPtcl();
+		if (cons.getFridgeController().isRestoreToOff()) {
+		    currentADR += cons.getFridgeController().getFridge().getPtcl();
+		} else if (cons.getFridgeController().isRestoreToOn()) {// he is
+									// switched
+									// off
+									// forADR
+		    currentADR -= cons.getFridgeController().getFridge().getPtcl();
+		}
+		// TODO count the states
+		switch (cons.getMyState()) {
+		case IDLE:
+		    idle++;
+		    break;
+		case REACTING_UNDER:
+		    reactUnder++;
+		    break;
+		case REACTING_OVER:
+		    reactOver++;
+		    break;
+		case MONITORING_UNDER:
+		    monitorUnder++;
+		    break;
+		case MONITORING_OVER:
+		    monitorOver++;
+		    break;
+		case INOPERATIVE_UNDER:
+		    inopUnder++;
+		    break;
+		case INOPERATIVE_OVER:
+		    inopOver++;
+		    break;
+		case DEAD_CONTROL_OVER:
+		    deadOver++;
+		    break;
+		case DEAD_CONTROL_UNDER:
+		    deadUnder++;
+		    break;
+		case AVAILABLE_OVER:
+		    availableOver++;
+		    break;
+		case AVAILABLE_UNDER:
+		    availableUnder++;
+		    break;
+		default:
+		    break;
 		}
 	    }
+	    // real consumption of the system
 	    aggregatedConsumption.add(currentAggregatedConsumption);
+	    // quantity of ADR relative to zero
 	    aggregatedADR.add(currentADR);
-	    frequency.add(FrequencyReader.getCurrentFreqValue());
+	    // first loop
+	    double currentBase = 0d;
+	    if (currentBaseLevelAgg == 0d) {
+		currentBase = currentAggregatedConsumption;
+	    } else {
+		currentBase = currentBaseLevelAgg;
+	    }
+	    baseLevelAgg.add(currentBase);
+	    desiredADRValue = FrequencyReader.calculateDesiredADR(currentBase);
+	    desiredADR.add(desiredADRValue);
 	    // update current time simulation
 	    currentTime = System.currentTimeMillis() - startTime;
-	    // first loop
-	    if (currentBaseLevelAgg == 0d) {
-		baseLevelAgg.add(currentAggregatedConsumption - currentADR);
-	    } else {
-		baseLevelAgg.add(currentBaseLevelAgg);
-	    }
+
+	    frequency.add(FrequencyReader.getCurrentFreqValue());
+	    filteredFrequency.add(FrequencyReader.getFilteredFrequency());
 	    // send update to the aggregator
 	    if (++counter > FREQ_UPDATES_NOMINAL_CONS_TO_AGG) {
 		counter = 0;
+		//no Delay
 		this.sendMessage(SimulationMessageFactory.getStatsToAggUpdateMessage(
 			inputQueueName, ADR_EM_Common.AGG_INPUT_QUEUE, new StatsToAggUpdateContent(
-				currentAggregatedConsumption - currentADR)));
+				currentAggregatedConsumption - currentADR)), false);
 	    }
+	    // States of the consumers
+	    idleState.add(idle);
+//	    availableOverState.add(availableOver);
+//	    availableUnderState.add(availableUnder);
+	    monitoringOverState.add(monitorOver);
+	    monitoringUnderState.add(monitorUnder);
+	    inoperativeOverState.add(inopOver);
+	    inoperativeUnderState.add(inopUnder);
+	    reactingOverState.add(reactOver);
+	    reactingUnderState.add(reactUnder);
+	    deadOverState.add(deadOver);
+	    deadUnderState.add(deadUnder);
 	}
     }
 
@@ -144,6 +270,7 @@ public class StatsAggregator extends SimulationElement {
     // the consumers
     public void startConsumingMq() {
 	Consumer consumer = new DefaultConsumer(dRChannel) {
+
 	    @Override
 	    public void handleDelivery(String consumerTag, Envelope envelope,
 		    AMQP.BasicProperties properties, byte[] body) throws IOException {
@@ -161,9 +288,13 @@ public class StatsAggregator extends SimulationElement {
 			currentBaseLevelAgg = ((StatsToAggUpdateContent) sm.getContent())
 				.getCurrentNominalAggregatedConsumption();
 		    } else {
-			System.out
-				.println("/*-/*-/*-/*/*-/*/*-/*-/*-/*/*-/*-/*/*/*-/*-/*/*-*/*--*/*-*/*-**-*/*-*/*-*/*-*/*-*/-*/-*");
+			//Total reallocation from the aggregator
+			//TODO at the 5th -> save data
 			aggAllocationUpdate = true;
+			if(++countAggAllocationUpdates  == 5)
+			{
+			    saveAggregatorStats();
+			}
 		    }
 		}
 	    }
@@ -173,6 +304,29 @@ public class StatsAggregator extends SimulationElement {
 	} catch (IOException e) {
 	    e.printStackTrace();
 	}
+    }
+    
+    public String saveAggregatorStats(){
+	String json = "";
+	// only the elements with the expose annotation are returned. @exposed
+	// annotation of gson library
+	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+	json = jsonGen.toJson(this);
+	// save the content in output
+	try {
+	    DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy_HH-mm-ss_");
+	    // get current date time with Calendar()
+	    Calendar cal = Calendar.getInstance();
+	    FileWriter file = new FileWriter(ADR_EM_Common.OUT_FILE_DIR
+		    + dateFormat.format(cal.getTime()) + OUT_JSON_FILE);
+	    file.write(json);
+	    file.flush();
+	    file.close();
+
+	} catch (IOException e) {
+	    e.printStackTrace();
+	}
+	return json;
     }
 
     public ArrayList<Double> getAggregatedConsumption() {

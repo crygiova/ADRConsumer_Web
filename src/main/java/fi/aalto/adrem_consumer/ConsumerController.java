@@ -47,8 +47,10 @@ public class ConsumerController {
     private static final String FILE_NAME_PROPERTIES = "config.properties";
     private static final String NUMBER_OF_CONSUMERS = "N_CONSUMERS";
     private static final String USE_POLICIES = "USE_POLICIES";
-    // JSON OUTPUT FILE FOR STATS
-    private static final String OUT_JSON_FILE = "aggStatsData.json";
+    // FRequency Reader Options for Errors
+    private static final String FR_ERRORS = "FR_ERRORS";
+    private static final String PER_FR_ERRORS = "PER_FR_ERRORS";
+    private static final String FILTER_FREQ = "FILTER_FREQ";
 
     private static final Logger logger = LoggerFactory.getLogger(ConsumerController.class);
 
@@ -57,6 +59,11 @@ public class ConsumerController {
     private static Boolean simulationStarted = false;
     private static Integer numberOfConsumers = 0;
     private static final boolean usePolicies;
+    // Errors in the frequency reader
+    private static final boolean frErrors;
+    private static double perFRErrors;
+    // if true it filteres the frequency
+    private static final boolean filterFrequency;
 
     /**
      * ArrayList which will contain all the Simulation elements
@@ -76,6 +83,9 @@ public class ConsumerController {
 	properties = Utility.getProperties(FILE_NAME_PROPERTIES);
 	numberOfConsumers = Integer.parseInt(properties.getProperty(NUMBER_OF_CONSUMERS));
 	usePolicies = Boolean.parseBoolean(properties.getProperty(USE_POLICIES));
+	frErrors = Boolean.parseBoolean(properties.getProperty(FR_ERRORS));
+	perFRErrors = Double.parseDouble(properties.getProperty(PER_FR_ERRORS));
+	filterFrequency = Boolean.parseBoolean(properties.getProperty(FILTER_FREQ)); 
     }
 
     /**
@@ -132,7 +142,8 @@ public class ConsumerController {
     // Return json data about the consumers
     @RequestMapping(value = "/consumers", method = RequestMethod.GET)
     public @ResponseBody String consumers(Locale locale, Model model) {
-	String json = new Gson().toJson(simulationElements.get(0).getFridge().getOnOffList());
+	String json = new Gson().toJson(simulationElements.get(0).getFridgeController().getFridge()
+		.getOnOffList());
 	return json;
     }
 
@@ -144,7 +155,7 @@ public class ConsumerController {
 	// annotation of gson library
 	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	if (simulationElements.size() > index)
-	    json = jsonGen.toJson(simulationElements.get(index).getFridge());
+	    json = jsonGen.toJson(simulationElements.get(index).getFridgeController().getFridge());
 	return json;
     }
 
@@ -173,7 +184,9 @@ public class ConsumerController {
     public @ResponseBody String getJsonPost() {
 	String json = "";
 
-	String fileName = "14-07-2016_14-45-51_aggStatsData.json";
+	DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+	Date date = new Date();
+	String fileName = dateFormat.format(date) + "_aggStatsData.json";
 	BufferedReader br;
 	try {
 	    br = new BufferedReader(new FileReader(ADR_EM_Common.OUT_FILE_DIR + fileName));
@@ -187,29 +200,11 @@ public class ConsumerController {
     // saves the simulation aggregated data to a jsonFile
     @RequestMapping(value = "/saveAggStats", method = RequestMethod.GET)
     public @ResponseBody String saveAggStats() {
-	String json = "";
-	// only the elements with the expose annotation are returned. @exposed
-	// annotation of gson library
-	Gson jsonGen = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	if (statsAggregated != null)
-	    json = jsonGen.toJson(statsAggregated);
-	// save the content in output
-	try {
-	    DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy_HH-mm-ss_");
-	    // get current date time with Calendar()
-	    Calendar cal = Calendar.getInstance();
-	    FileWriter file = new FileWriter(ADR_EM_Common.OUT_FILE_DIR
-		    + dateFormat.format(cal.getTime()) + OUT_JSON_FILE);
-	    file.write(json);
-	    file.flush();
-	    file.close();
-
-	} catch (IOException e) {
-	    e.printStackTrace();
-	}
-
-	return json;
+	    return statsAggregated.saveAggregatorStats();
+	return null;
     }
+    
 
     // Initialization of the consumers
     public static void initConsumers() {
@@ -256,7 +251,7 @@ public class ConsumerController {
 	tStatsAggregated = new Thread(statsAggregated);
 	tStatsAggregated.start();
 	// Start reading frequency
-	FrequencyReader.startFrequencyReader();
+	FrequencyReader.startFrequencyReader(filterFrequency, frErrors, perFRErrors);
     }
 
     /**
