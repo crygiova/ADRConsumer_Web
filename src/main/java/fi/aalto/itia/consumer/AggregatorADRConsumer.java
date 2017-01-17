@@ -52,16 +52,23 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	this.startConsumingMq();
 	// Random msg based on fridge on or off
 	this.registerToAggregator(this.getCurrentUpdateMessageContent());
-
+	//this.registerToAggregator(this.getCurrentUpdateMessageContentVersion2());
 	Double freqToReactUnder = 0d;
 	Double freqToReactAbove = 0d;
 
 	// Loop keep going
 	while (this.keepGoing) {
+
 	    if (lastInstructionUpdated == true) {
 		freqToReactUnder = lastInstruction.getUnderNominalFrequency();
 		freqToReactAbove = lastInstruction.getAboveNominalFrequency();
 		lastInstructionUpdated = false;
+		// XXX ADDED LATEST
+		// if (freqToReactUnder == 0d && freqToReactAbove == 0d) {
+		// if (this.isAllocated()) {
+		// this.setMyState(ConsumerState.IDLE);
+		// }
+		// }
 	    }
 
 	    // XXX this is the control
@@ -72,6 +79,7 @@ public class AggregatorADRConsumer extends ADRConsumer {
 		// freqToReactAbove);
 		// IF both 0
 		applyFreqControlAVG(freqToReactUnder, freqToReactAbove);
+		//applyFreqControlAVGVersion2(freqToReactUnder, freqToReactAbove);
 	    } else {
 		// status changes means cannot do ADR
 		this.fcrd.initCounterRestore();
@@ -173,7 +181,87 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	}
     }
 
-    
+    /**
+     * Similar to the V2 but in addition it has been added a reaction delay for
+     * the consumers
+     * 
+     * @param freqToReactUnder
+     * @param freqToReactAbove
+     *            ADDed AVAILABLE states
+     */
+    private void applyFreqControlAVGVersion2(Double freqToReactUnder, Double freqToReactAbove) {
+
+	if (freqToReactAbove != 0d && freqToReactAbove < FrequencyReader.NOMINAL_FREQ) {
+	    this.setMyState(ConsumerState.DEAD_CONTROL_OVER);
+	} else if (freqToReactUnder != 0d && freqToReactUnder > FrequencyReader.NOMINAL_FREQ) {
+	    this.setMyState(ConsumerState.DEAD_CONTROL_UNDER);
+	}
+
+	if (freqToReactUnder != 0d && FrequencyReader.getFilteredFrequency() <= freqToReactUnder
+		&& !this.getFridgeController().isRestoreToOn()) {
+	    // if it is time to react
+	    if (this.getFridgeController().reactDownFrequency()) {
+		// exclude the dead band control
+		if (freqToReactUnder < FrequencyReader.NOMINAL_FREQ) {
+		    // only if normal control
+		    this.aging.addReactDw();
+		    this.setMyStateExcludeDeadControlUnder(ConsumerState.REACTING_UNDER,
+			    freqToReactUnder);
+		}
+	    } else {
+		this.setMyStateExcludeDeadControlUnder(ConsumerState.INOPERATIVE_UNDER,
+			freqToReactUnder);
+		// update the aggregator
+		this.updateAggregator();
+	    }
+	} else if (this.getFridgeController().isRestoreToOn()) {
+	    // restoreON
+	    if (FrequencyReader.getFilteredFrequency() >= freqToReactUnder
+		    || freqToReactUnder == 0d) {
+		if (this.getFridgeController().restoreDownFrequency()) {
+		    this.updateAggregator();
+		    // set the state if not deadband control
+		    if (freqToReactUnder != 0d && (freqToReactUnder < FrequencyReader.NOMINAL_FREQ)) {
+			this.setMyStateExcludeDeadControlUnder(ConsumerState.INOPERATIVE_UNDER,
+				freqToReactUnder);
+		    }
+		}
+	    }
+	} else if (freqToReactUnder != 0d && (freqToReactUnder < FrequencyReader.NOMINAL_FREQ)) {
+	    this.setMyStateExcludeDeadControlUnder(ConsumerState.MONITORING_UNDER, freqToReactUnder);
+	}
+	// 2//
+	if (freqToReactAbove != 0d && FrequencyReader.getFilteredFrequency() >= freqToReactAbove
+		&& !this.getFridgeController().isRestoreToOff()) {
+	    if (this.getFridgeController().reactUpFrequency()) {
+		// exclude the dead band control
+		if (freqToReactAbove > FrequencyReader.NOMINAL_FREQ) {
+		    // counting how many times it is reacting to up frequency
+		    this.aging.addReactUp();
+		    this.setMyStateExcludeDeadControlOver(ConsumerState.REACTING_OVER,
+			    freqToReactAbove);
+		}
+	    } else {
+		this.updateAggregator();
+		this.setMyStateExcludeDeadControlOver(ConsumerState.INOPERATIVE_OVER,
+			freqToReactAbove);
+	    }
+	} else if (this.getFridgeController().isRestoreToOff()) {
+	    if (FrequencyReader.getFilteredFrequency() <= freqToReactAbove
+		    || freqToReactAbove == 0d) {// restoreOff
+		if (this.getFridgeController().restoreUpFrequency()) {
+		    this.updateAggregator();
+		    if (freqToReactAbove != 0d && freqToReactAbove > FrequencyReader.NOMINAL_FREQ) {
+			this.setMyStateExcludeDeadControlOver(ConsumerState.INOPERATIVE_OVER,
+				freqToReactAbove);
+		    }
+		}
+	    }
+	} else if (freqToReactAbove != 0d && freqToReactAbove > FrequencyReader.NOMINAL_FREQ) {
+	    this.setMyStateExcludeDeadControlUnder(ConsumerState.MONITORING_OVER, freqToReactUnder);
+	}
+    }
+
     /**
      * Similar to the V2 but in addition it has been added a reaction delay for
      * the consumers
@@ -328,7 +416,7 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	}
     }
 
-    // generates update message content object with last updates
+    // generates update message content object with last updates ORIGINAL
     protected UpdateMessageContent getCurrentUpdateMessageContent() {
 	// TODO missing the part where isCurrentOn but the status cannot be
 	// changed for a while
@@ -361,8 +449,47 @@ public class AggregatorADRConsumer extends ADRConsumer {
 	 */
     }
 
+    // second version with disconnected loads
+    protected UpdateMessageContent getCurrentUpdateMessageContentVersion2() {
+	// TODO missing the part where isCurrentOn but the status cannot be
+	// changed for a while
+	if (this.getFridgeController().getFridge().isCurrentOn()
+		&& this.getFridgeController().getFridge().isPossibleToSwitchOff()) {
+	    // goes available
+	    if (!this.isAllocated()) {
+		this.setMyState(ConsumerState.AVAILABLE_UNDER);
+	    }
+	    return SimulationMessageFactory.getUpdateMessageContent(this.getFridgeController()
+		    .getFridge().getCurrentElectricPower(), this.getFridgeController().getFridge()
+		    .getCurrentElectricPower(), this.getFridgeController().getFridge()
+		    .getSecondsToTempMaxLimit(), this.getFridgeController().getFridge()
+		    .getSecondsToTempMinLimit(), 0d, 0d, 0d, this.inputQueueName, this.aging);
+	} else if (!this.getFridgeController().getFridge().isCurrentOn()
+		&& this.getFridgeController().getFridge().isPossibleToSwitchOn()) {
+	    // goes available
+	    if (!this.isAllocated()) {
+		this.setMyState(ConsumerState.AVAILABLE_OVER);
+	    }
+	    return SimulationMessageFactory.getUpdateMessageContent(this.getFridgeController()
+		    .getFridge().getCurrentElectricPower(), this.getFridgeController().getFridge()
+		    .getCurrentElectricPower(), 0d, 0d, this.getFridgeController().getFridge()
+		    .getPtcl(), this.getFridgeController().getFridge().getSecondsToTempMinLimit(),
+		    this.getFridgeController().getFridge().getSecondsToTempMaxLimit(),
+		    this.inputQueueName, this.aging);
+	}
+	// if it is ON or OFF but it is not possible to change the status
+	if (!this.isAllocated()) {
+	    this.setMyState(ConsumerState.IDLE);
+	}
+	return SimulationMessageFactory.getUpdateMessageContent(this.getFridgeController()
+		.getFridge().getCurrentElectricPower(), 0d, 0d, 0d, 0d, 0d, 0d,
+		this.inputQueueName, this.aging);
+
+    }
+
     protected void updateAggregator() {
 	UpdateMessageContent umc = this.getCurrentUpdateMessageContent();
+	//UpdateMessageContent umc = this.getCurrentUpdateMessageContentVersion2();
 	lastUpdateSent = System.currentTimeMillis();
 	this.sendMessage(SimulationMessageFactory.getUpdateMessage(this.inputQueueName,
 		ADR_EM_Common.AGG_INPUT_QUEUE, umc));

@@ -15,13 +15,15 @@ public class ADRConsumer extends SimulationElement {
     private static final long serialVersionUID = 4328592954437775437L;
     // prefix for queue names
     private static final String PREFIX_INPUT_QUEUE = "adrc_";
+
     //
     public enum ConsumerState {
-	IDLE, MONITORING_OVER, MONITORING_UNDER, INOPERATIVE_UNDER, INOPERATIVE_OVER, REACTING_UNDER, REACTING_OVER, DEAD_CONTROL_UNDER ,DEAD_CONTROL_OVER
+	IDLE, AVAILABLE_UNDER, AVAILABLE_OVER, MONITORING_OVER, MONITORING_UNDER, INOPERATIVE_UNDER, INOPERATIVE_OVER, REACTING_UNDER, REACTING_OVER, DEAD_CONTROL_UNDER, DEAD_CONTROL_OVER
     }
-    //STATE OF THE CONSUMER
+
+    // STATE OF THE CONSUMER
     private ConsumerState myState = ConsumerState.IDLE;
-    
+
     private FridgeController fridgeController;
     private final int ID;
 
@@ -62,7 +64,17 @@ public class ADRConsumer extends SimulationElement {
     public void setMyState(ConsumerState myState) {
 	this.myState = myState;
     }
-    
+
+    public boolean isAllocated()
+    { 
+	//if notallocated
+	if (this.myState.compareTo(ConsumerState.IDLE) == 0 || this.myState.compareTo(ConsumerState.AVAILABLE_UNDER) == 0 || this.myState.compareTo(ConsumerState.AVAILABLE_OVER) == 0)
+	{
+	    return false;
+	}
+	return true;
+    }
+
     @Override
     public void scheduleTasks() {
 	// TODO Auto-generated method stub

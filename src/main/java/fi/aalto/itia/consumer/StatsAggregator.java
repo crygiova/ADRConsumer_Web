@@ -83,6 +83,10 @@ public class StatsAggregator extends SimulationElement {
     @Expose
     private ArrayList<Integer> idleState;
     @Expose
+    private ArrayList<Integer> availableUnderState;
+    @Expose
+    private ArrayList<Integer> availableOverState;
+    @Expose
     private ArrayList<Integer> monitoringOverState;
     @Expose
     private ArrayList<Integer> monitoringUnderState;
@@ -98,7 +102,7 @@ public class StatsAggregator extends SimulationElement {
     private ArrayList<Integer> deadUnderState;
     @Expose
     private ArrayList<Integer> deadOverState;
-
+    
     private int counterUpdateAging = 0;
     //counts the total updates of the aggregator
     protected int countAggAllocationUpdates = 0;
@@ -118,6 +122,9 @@ public class StatsAggregator extends SimulationElement {
 	baseLevelAgg = new ArrayList<Double>();
 	desiredADR = new ArrayList<Double>();
 	// XXX Consumers STates
+	idleState = new ArrayList<Integer>();
+	availableUnderState = new ArrayList<Integer>();
+	availableOverState = new ArrayList<Integer>();
 	idleState = new ArrayList<Integer>();
 	monitoringOverState = new ArrayList<Integer>();
 	monitoringUnderState = new ArrayList<Integer>();
@@ -163,6 +170,7 @@ public class StatsAggregator extends SimulationElement {
 	    currentAggregatedConsumption = 0d;
 	    int idle = 0, reactUnder = 0, reactOver = 0, monitorUnder = 0, monitorOver = 0;
 	    int inopUnder = 0, inopOver = 0, deadOver = 0, deadUnder = 0;
+	    int availableUnder = 0, availableOver = 0;
 
 	    for (ADRConsumer cons : consumers) {
 		currentAggregatedConsumption += cons.getFridgeController().getFridge()
@@ -206,6 +214,12 @@ public class StatsAggregator extends SimulationElement {
 		case DEAD_CONTROL_UNDER:
 		    deadUnder++;
 		    break;
+		case AVAILABLE_OVER:
+		    availableOver++;
+		    break;
+		case AVAILABLE_UNDER:
+		    availableUnder++;
+		    break;
 		default:
 		    break;
 		}
@@ -239,6 +253,8 @@ public class StatsAggregator extends SimulationElement {
 	    }
 	    // States of the consumers
 	    idleState.add(idle);
+//	    availableOverState.add(availableOver);
+//	    availableUnderState.add(availableUnder);
 	    monitoringOverState.add(monitorOver);
 	    monitoringUnderState.add(monitorUnder);
 	    inoperativeOverState.add(inopOver);

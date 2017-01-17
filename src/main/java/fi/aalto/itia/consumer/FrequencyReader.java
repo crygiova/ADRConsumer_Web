@@ -28,7 +28,7 @@ public class FrequencyReader implements Runnable {
 
     // private double coeff = 0.5d;
     // Gamma is in seconds
-    private static double gamma = 120d;
+    private static double gamma = 180d;
     private static double betaCoeff = -gamma / Math.log(1 - 0.95);
     private static double coeff = Math.exp(-1 / betaCoeff);
 
