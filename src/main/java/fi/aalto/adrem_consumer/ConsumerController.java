@@ -31,6 +31,7 @@ import fi.aalto.itia.adr_em_common.SimulationElement;
 import fi.aalto.itia.consumer.ADRConsumer;
 import fi.aalto.itia.consumer.AggregatorADRConsumer;
 import fi.aalto.itia.consumer.FrequencyReader;
+import fi.aalto.itia.consumer.MolinaPolicyConsumer;
 import fi.aalto.itia.consumer.PolicyConsumer;
 import fi.aalto.itia.consumer.StatsAggregator;
 import fi.aalto.itia.models.FridgeFactory;
@@ -82,7 +83,7 @@ public class ConsumerController {
     static {
 	properties = Utility.getProperties(FILE_NAME_PROPERTIES);
 	numberOfConsumers = Integer.parseInt(properties.getProperty(NUMBER_OF_CONSUMERS));
-	usePolicies = Boolean.parseBoolean(properties.getProperty(USE_POLICIES));
+	usePolicies = ADR_EM_Common.USE_POLICIES;
 	frErrors = Boolean.parseBoolean(properties.getProperty(FR_ERRORS));
 	perFRErrors = Double.parseDouble(properties.getProperty(PER_FR_ERRORS));
 	filterFrequency = Boolean.parseBoolean(properties.getProperty(FILTER_FREQ)); 
@@ -218,7 +219,7 @@ public class ConsumerController {
 	// Based on the selected type of consumer
 	if (usePolicies) {
 	    for (int i = 0; i < numberOfConsumers; i++) {
-		simulationElements.add(i, new PolicyConsumer(i, fridgeManager.getFridges().get(i)));
+		simulationElements.add(i, new MolinaPolicyConsumer(i, fridgeManager.getFridges().get(i)));
 	    }
 	} else {
 	    for (int i = 0; i < numberOfConsumers; i++) {
@@ -234,7 +235,7 @@ public class ConsumerController {
 	threads.clear();
 	if (usePolicies) {
 	    for (SimulationElement r : simulationElements) {
-		threads.add(new Thread(((PolicyConsumer) r)));
+		threads.add(new Thread(((MolinaPolicyConsumer) r)));
 	    }
 	} else {
 	    for (SimulationElement r : simulationElements) {
